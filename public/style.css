@@ -67,6 +67,12 @@ label {
     color: #9ca3af;
 }
 
+#upload-result {
+    max-height: 400px;
+    min-height: 120px;
+    overflow: auto;
+}
+
 .user-row {
     padding: 0.25rem 0.5rem;
     border-bottom: 1px solid #1f2937;

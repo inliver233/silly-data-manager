@@ -65,14 +65,18 @@ async function refreshAuthAndStatus() {
         document.getElementById('status-json').textContent = JSON.stringify(status, null, 2);
 
         const summaryEl = document.getElementById('status-summary');
+        const rollbackButton = document.getElementById('rollback-button');
         if (summaryEl) {
             if (!status.exists) {
                 summaryEl.textContent = '服务器上还没有该 handle 对应的数据目录。';
+                if (rollbackButton) {
+                    rollbackButton.disabled = true;
+                }
             } else {
                 const lines = [];
                 const sizeMb = status.size ? (status.size / (1024 * 1024)).toFixed(2) : '0.00';
                 lines.push(`数据目录：${status.path}`);
-                lines.push(`是否存在：是`);
+                lines.push('是否存在：是');
                 lines.push(`数据大小：${sizeMb} MB`);
                 if (status.mtime) {
                     try {
@@ -89,11 +93,28 @@ async function refreshAuthAndStatus() {
                 keyParts.push(`stats.json（${keys.statsJson ? '存在' : '缺失'}）`);
                 keyParts.push(`content.log（${keys.contentLog ? '存在' : '缺失'}）`);
                 lines.push(`关键文件：${keyParts.join('，')}`);
-                if (status.lastUpload) {
-                    lines.push('最近一次上传：已记录（可使用“回滚”恢复到上传前状态）。');
+
+                const rb = status.rollback || null;
+                if (rb && rb.canRollback) {
+                    lines.push('回滚状态：可用（将回到最近一次通过本系统上传前的状态）。');
+                    if (rb.backupMtime) {
+                        try {
+                            const bLocal = new Date(rb.backupMtime).toLocaleString();
+                            lines.push(`备份创建时间：${bLocal}`);
+                        } catch {
+                            lines.push(`备份创建时间：${rb.backupMtime}`);
+                        }
+                    }
+                    if (rollbackButton) {
+                        rollbackButton.disabled = false;
+                    }
                 } else {
-                    lines.push('最近一次上传：暂无记录。');
+                    lines.push('回滚状态：当前没有可用的自动备份（尚未通过本系统进行成功上传）。');
+                    if (rollbackButton) {
+                        rollbackButton.disabled = true;
+                    }
                 }
+
                 summaryEl.textContent = lines.join('\n');
             }
         }
@@ -107,6 +128,9 @@ window.addEventListener('DOMContentLoaded', () => {
     const logoutButton = document.getElementById('logout-button');
     const uploadButton = document.getElementById('upload-button');
     const rollbackButton = document.getElementById('rollback-button');
+
+    const handleApplyButton = document.getElementById('handle-apply-button');
+    const handleInput = document.getElementById('handle-input');
 
     loginButton.addEventListener('click', () => {
         const returnTo = window.location.pathname || '/';
@@ -154,7 +178,9 @@ window.addEventListener('DOMContentLoaded', () => {
         formData.append('overwriteStats', overwriteStats ? 'true' : 'false');
         formData.append('overwriteContentLog', overwriteContentLog ? 'true' : 'false');
 
-        resultEl.textContent = simulate ? '正在进行模拟验证（不会修改服务器数据）…' : '正在上传并写入，请稍候…';
+        resultEl.textContent = simulate
+            ? '步骤 1/2：正在上传文件并在服务器中解压（模拟模式，不会修改服务器数据）…'
+            : '步骤 1/3：正在上传文件并在服务器中解压…';
 
         try {
             const response = await fetch('/api/data/upload', {
@@ -164,12 +190,19 @@ window.addEventListener('DOMContentLoaded', () => {
             });
             const json = await response.json();
             if (!response.ok || !json.ok) {
-                resultEl.textContent = `上传失败：${json.message || response.status}`;
+                resultEl.textContent = `上传失败：${json.message || response.status}\n服务器返回：\n${JSON.stringify(json, null, 2)}`;
             } else {
                 if (json.result && json.result.simulation) {
-                    resultEl.textContent = `模拟结果：\n${JSON.stringify(json.result, null, 2)}\n如果没有危险文件且结构正确，可以切换到“真实写入”模式再次上传。`;
+                    resultEl.textContent =
+                        '步骤 2/2：服务器已完成解压和安全检查（模拟模式）。\n' +
+                        '如果没有危险文件且结构正确，可以切换到“真实写入”模式再次上传。\n\n' +
+                        JSON.stringify(json.result, null, 2);
                 } else {
-                    resultEl.textContent = `上传成功：\n${JSON.stringify(json.result, null, 2)}`;
+                    resultEl.textContent =
+                        '步骤 2/3：服务器已完成解压和安全检查。\n' +
+                        '步骤 3/3：已完成备份旧数据并合并新数据。\n\n' +
+                        '详细结果：\n' +
+                        JSON.stringify(json.result, null, 2);
                     await refreshAuthAndStatus();
                 }
             }
@@ -225,5 +258,4 @@ window.addEventListener('DOMContentLoaded', () => {
 
     refreshAuthAndStatus();
 });
-    const handleApplyButton = document.getElementById('handle-apply-button');
-    const handleInput = document.getElementById('handle-input');
+

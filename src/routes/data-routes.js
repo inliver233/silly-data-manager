@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import config from '../config.js';
 import { requireLogin } from '../middleware/auth.js';
-import { getUserDataStatus, processUpload, rollbackLastUpload } from '../services/data-service.js';
+import { getUserDataStatus, getUploadBackups, processUpload, rollbackLastUpload } from '../services/data-service.js';
 import { ensureDirectorySync } from '../utils/fs-utils.js';
 
 export const dataRouter = express.Router();
@@ -81,4 +81,13 @@ dataRouter.post('/rollback', requireLogin, async (request, response) => {
             message: error.message || 'Rollback failed',
         });
     }
+});
+
+dataRouter.get('/backups', requireLogin, (request, response) => {
+    const handle = request.user.stHandle;
+    const backups = getUploadBackups(handle);
+    return response.json({
+        ok: true,
+        backups,
+    });
 });

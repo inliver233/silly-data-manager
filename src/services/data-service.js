@@ -26,6 +26,55 @@ function getUploadTempDir(linuxdoId) {
     return base;
 }
 
+export function getUploadBackups(handle, maxAgeMs = 24 * 60 * 60 * 1000) {
+    const backupsDir = getUserBackupsDir(handle);
+    if (!fs.existsSync(backupsDir)) {
+        return [];
+    }
+
+    const now = Date.now();
+    const entries = fs.readdirSync(backupsDir);
+    const backups = [];
+
+    for (const name of entries) {
+        if (!name.startsWith('upload_') || !name.endsWith('.zip')) {
+            continue;
+        }
+        const fullPath = path.join(backupsDir, name);
+        let stat;
+        try {
+            stat = fs.statSync(fullPath);
+        } catch {
+            continue;
+        }
+
+        const ageMs = now - stat.mtimeMs;
+        if (ageMs > maxAgeMs) {
+            try {
+                fs.unlinkSync(fullPath);
+            } catch {
+                // ignore cleanup errors
+            }
+            continue;
+        }
+
+        backups.push({
+            name,
+            path: fullPath,
+            size: stat.size,
+            mtime: stat.mtime.toISOString(),
+        });
+    }
+
+    backups.sort((a, b) => {
+        const ta = new Date(a.mtime).getTime();
+        const tb = new Date(b.mtime).getTime();
+        return tb - ta;
+    });
+
+    return backups;
+}
+
 export function getUserDataStatus(handle) {
     if (!handle) {
         return {
@@ -59,6 +108,33 @@ export function getUserDataStatus(handle) {
 
     const lastUpload = getLastUploadForHandle(handle);
 
+    let rollback = null;
+    if (lastUpload && lastUpload.backupZipPath) {
+        const backupPath = lastUpload.backupZipPath;
+        let backupExists = false;
+        let backupSize = null;
+        let backupMtime = null;
+
+        try {
+            if (fs.existsSync(backupPath)) {
+                const stat = fs.statSync(backupPath);
+                backupExists = true;
+                backupSize = stat.size;
+                backupMtime = stat.mtime.toISOString();
+            }
+        } catch {
+            // ignore stat errors
+        }
+
+        rollback = {
+            canRollback: Boolean(backupExists),
+            backupPath,
+            backupSize,
+            backupMtime,
+            uploadTimestamp: lastUpload.timestamp || null,
+        };
+    }
+
     return {
         handle,
         exists,
@@ -67,35 +143,84 @@ export function getUserDataStatus(handle) {
         mtime: stats ? stats.mtime.toISOString() : null,
         keyFiles,
         lastUpload,
+        rollback,
     };
 }
 
-function detectStructure(extractRoot, handle) {
-    const userRoot = extractRoot;
-
+function looksLikeUserRoot(userRoot) {
     const hasSettings = fs.existsSync(path.join(userRoot, 'settings.json'));
     const hasCharacters = fs.existsSync(path.join(userRoot, 'characters'));
     const hasChats = fs.existsSync(path.join(userRoot, 'chats'));
     const hasBackups = fs.existsSync(path.join(userRoot, 'backups'));
 
-    if (hasSettings && (hasCharacters || hasChats || hasBackups)) {
+    return hasSettings && (hasCharacters || hasChats || hasBackups);
+}
+
+function detectStructure(extractRoot, handle) {
+    const userRoot = extractRoot;
+
+    if (looksLikeUserRoot(userRoot)) {
         return {
             type: 'user_root',
             sourceUserRoot: userRoot,
+            sourceHandle: null,
         };
     }
 
     const dataDir = path.join(extractRoot, 'data');
     if (fs.existsSync(dataDir)) {
-        const candidate = path.join(dataDir, handle);
-        if (fs.existsSync(candidate)) {
+        const preferred = path.join(dataDir, handle);
+        if (fs.existsSync(preferred) && looksLikeUserRoot(preferred)) {
             return {
                 type: 'data_dir',
-                sourceUserRoot: candidate,
+                sourceUserRoot: preferred,
+                sourceHandle: handle,
             };
         }
 
-        throw new Error(`data.zip contains a data/ directory but not data/${handle}`);
+        const entries = fs.readdirSync(dataDir, { withFileTypes: true });
+        const ignored = new Set([
+            '_cache',
+            '_storage',
+            '_uploads',
+            '_webpack',
+            'system-monitor',
+            'forum_data',
+            'public_characters',
+            'announcements',
+        ]);
+
+        /** @type {{ name: string, fullPath: string }[]} */
+        const candidates = [];
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) {
+                continue;
+            }
+            if (ignored.has(entry.name)) {
+                continue;
+            }
+
+            const fullPath = path.join(dataDir, entry.name);
+            if (looksLikeUserRoot(fullPath)) {
+                candidates.push({ name: entry.name, fullPath });
+            }
+        }
+
+        if (candidates.length === 1) {
+            return {
+                type: 'data_dir',
+                sourceUserRoot: candidates[0].fullPath,
+                sourceHandle: candidates[0].name,
+            };
+        }
+
+        if (candidates.length > 1) {
+            const names = candidates.map(x => x.name).join(', ');
+            throw new Error(`data.zip contains data/ with multiple user directories (${names}), and none matches target handle ${handle}`);
+        }
+
+        throw new Error(`data.zip contains a data/ directory but no valid user directory was found`);
     }
 
     throw new Error('Invalid data.zip structure: could not find a user root or data/ directory');
@@ -211,6 +336,7 @@ function buildSimulationSummary(structure, unsafeFiles, sourceUserRoot) {
 
     return {
         structure: structure.type,
+        sourceHandle: structure.sourceHandle || null,
         sourceUserRoot,
         unsafeFiles,
         approximateUncompressedSize: totalSize,
@@ -248,54 +374,116 @@ export async function processUpload(request, handle) {
     const tempBase = getUploadTempDir(linuxdoUser.id);
     const extractRoot = path.join(tempBase, `${Date.now()}_extracted`);
 
-    await extractZipSafely(file.path, extractRoot, { maxTotalSize: MAX_UNCOMPRESSED_SIZE });
+    let structure;
+    let unsafeFiles;
 
-    const structure = detectStructure(extractRoot, handle);
-    const unsafeFiles = checkForUnsafeFiles(structure.sourceUserRoot);
+    try {
+        await extractZipSafely(file.path, extractRoot, { maxTotalSize: MAX_UNCOMPRESSED_SIZE });
+        structure = detectStructure(extractRoot, handle);
+        unsafeFiles = checkForUnsafeFiles(structure.sourceUserRoot);
 
-    const simulation = parseBooleanFlag(request.body?.simulate, false);
-    const overwriteSettings = parseBooleanFlag(request.body?.overwriteSettings, true);
-    const overwriteSecrets = parseBooleanFlag(request.body?.overwriteSecrets, true);
-    const overwriteStats = parseBooleanFlag(request.body?.overwriteStats, true);
-    const overwriteContentLog = parseBooleanFlag(request.body?.overwriteContentLog, true);
+        const simulation = parseBooleanFlag(request.body?.simulate, false);
+        const overwriteSettings = parseBooleanFlag(request.body?.overwriteSettings, true);
+        const overwriteSecrets = parseBooleanFlag(request.body?.overwriteSecrets, true);
+        const overwriteStats = parseBooleanFlag(request.body?.overwriteStats, true);
+        const overwriteContentLog = parseBooleanFlag(request.body?.overwriteContentLog, true);
 
-    const archiveInfo = {
-        filename: file.originalname,
-        size: file.size,
-        structure: structure.type,
-        effectiveUserRoot: handle,
-    };
-
-    const simulationSummary = buildSimulationSummary(structure, unsafeFiles, structure.sourceUserRoot);
-
-    if (simulation) {
-        writeOperationLog({
-            operationId,
-            type: 'upload-simulate',
-            linuxdo: linuxdoUser,
-            stHandle: handle,
-            ip,
-            userAgent,
-            archive: archiveInfo,
-            result: unsafeFiles.length > 0 ? 'rejected' : 'success',
-            reason: unsafeFiles.length > 0 ? 'Unsafe file extensions detected in simulation' : null,
-            simulation: simulationSummary,
-        });
-
-        return {
-            simulation: true,
-            archive: archiveInfo,
-            overwriteOptions: {
-                overwriteSettings,
-                overwriteSecrets,
-                overwriteStats,
-                overwriteContentLog,
-            },
-            summary: simulationSummary,
+        const archiveInfo = {
+            filename: file.originalname,
+            size: file.size,
+            structure: structure.type,
+            sourceHandle: structure.sourceHandle || null,
+            effectiveUserRoot: handle,
         };
-    }
 
-    if (unsafeFiles.length > 0) {
+        const simulationSummary = buildSimulationSummary(structure, unsafeFiles, structure.sourceUserRoot);
+
+        if (simulation) {
+            writeOperationLog({
+                operationId,
+                type: 'upload-simulate',
+                linuxdo: linuxdoUser,
+                stHandle: handle,
+                ip,
+                userAgent,
+                archive: archiveInfo,
+                result: unsafeFiles.length > 0 ? 'rejected' : 'success',
+                reason: unsafeFiles.length > 0 ? 'Unsafe file extensions detected in simulation' : null,
+                simulation: simulationSummary,
+            });
+
+            return {
+                simulation: true,
+                archive: archiveInfo,
+                overwriteOptions: {
+                    overwriteSettings,
+                    overwriteSecrets,
+                    overwriteStats,
+                    overwriteContentLog,
+                },
+                summary: simulationSummary,
+            };
+        }
+
+        if (unsafeFiles.length > 0) {
+            writeOperationLog({
+                operationId,
+                type: 'upload',
+                linuxdo: linuxdoUser,
+                stHandle: handle,
+                ip,
+                userAgent,
+                archive: archiveInfo,
+                result: 'rejected',
+                reason: 'Unsafe file extensions detected',
+                details: {
+                    unsafeFiles,
+                },
+            });
+
+            const error = new Error('Upload rejected due to unsafe files in archive');
+            // @ts-ignore
+            error.statusCode = 400;
+            // @ts-ignore
+            error.details = { unsafeFiles };
+            throw error;
+        }
+
+        const targetRoot = getUserRoot(handle);
+        if (!fs.existsSync(targetRoot)) {
+            const error = new Error(`Target user directory does not exist: ${targetRoot}`);
+            // @ts-ignore
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const backupsDir = getUserBackupsDir(handle);
+        ensureDirectorySync(backupsDir);
+
+        const backupTimestamp = timestamp.replace(/[:.]/g, '-');
+        const backupZipPath = path.join(backupsDir, `upload_${backupTimestamp}.zip`);
+
+        await zipDirectoryToFile(targetRoot, backupZipPath);
+
+        const overwriteOptions = {
+            overwriteSettings,
+            overwriteSecrets,
+            overwriteStats,
+            overwriteContentLog,
+        };
+
+        const mergeResult = mergeUserData(structure.sourceUserRoot, targetRoot, overwriteOptions);
+
+        const lastUpload = {
+            operationId,
+            timestamp,
+            backupZipPath,
+            archive: archiveInfo,
+            mergeResult,
+        };
+
+        updateLastUploadForHandle(handle, lastUpload);
+
         writeOperationLog({
             operationId,
             type: 'upload',
@@ -304,81 +492,40 @@ export async function processUpload(request, handle) {
             ip,
             userAgent,
             archive: archiveInfo,
-            result: 'rejected',
-            reason: 'Unsafe file extensions detected',
-            details: {
-                unsafeFiles,
+            result: 'success',
+            reason: null,
+            backup: {
+                zipPath: backupZipPath,
+                snapshotPath: null,
             },
+            mergeResult,
         });
 
-        const error = new Error('Upload rejected due to unsafe files in archive');
-        // @ts-ignore
-        error.statusCode = 400;
-        // @ts-ignore
-        error.details = { unsafeFiles };
-        throw error;
+        return {
+            archive: archiveInfo,
+            mergeResult,
+            backup: {
+                zipPath: backupZipPath,
+            },
+            lastUpload,
+        };
+    } finally {
+        try {
+            if (fs.existsSync(extractRoot)) {
+                fs.rmSync(extractRoot, { recursive: true, force: true });
+            }
+        } catch {
+            // ignore cleanup errors
+        }
+
+        try {
+            if (file && file.path && fs.existsSync(file.path)) {
+                fs.unlinkSync(file.path);
+            }
+        } catch {
+            // ignore cleanup errors
+        }
     }
-
-    const targetRoot = getUserRoot(handle);
-    if (!fs.existsSync(targetRoot)) {
-        const error = new Error(`Target user directory does not exist: ${targetRoot}`);
-        // @ts-ignore
-        error.statusCode = 400;
-        throw error;
-    }
-
-    const backupsDir = getUserBackupsDir(handle);
-    ensureDirectorySync(backupsDir);
-
-    const backupTimestamp = timestamp.replace(/[:.]/g, '-');
-    const backupZipPath = path.join(backupsDir, `upload_${backupTimestamp}.zip`);
-
-    await zipDirectoryToFile(targetRoot, backupZipPath);
-
-    const overwriteOptions = {
-        overwriteSettings,
-        overwriteSecrets,
-        overwriteStats,
-        overwriteContentLog,
-    };
-
-    const mergeResult = mergeUserData(structure.sourceUserRoot, targetRoot, overwriteOptions);
-
-    const lastUpload = {
-        operationId,
-        timestamp,
-        backupZipPath,
-        archive: archiveInfo,
-        mergeResult,
-    };
-
-    updateLastUploadForHandle(handle, lastUpload);
-
-    writeOperationLog({
-        operationId,
-        type: 'upload',
-        linuxdo: linuxdoUser,
-        stHandle: handle,
-        ip,
-        userAgent,
-        archive: archiveInfo,
-        result: 'success',
-        reason: null,
-        backup: {
-            zipPath: backupZipPath,
-            snapshotPath: null,
-        },
-        mergeResult,
-    });
-
-    return {
-        archive: archiveInfo,
-        mergeResult,
-        backup: {
-            zipPath: backupZipPath,
-        },
-        lastUpload,
-    };
 }
 
 export async function rollbackLastUpload(request, handle) {
