@@ -338,7 +338,8 @@ window.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('dataZip', file);
 
-        const mode = document.querySelector('input[name="mode"]:checked')?.value || 'simulate';
+        const modeInput = document.querySelector('input[name="mode"]:checked');
+        const mode = modeInput && typeof modeInput.value === 'string' ? modeInput.value : 'simulate';
         const simulate = mode === 'simulate';
 
         const overwriteSettings = document.getElementById('overwrite-settings').checked;
@@ -346,6 +347,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const overwriteStats = document.getElementById('overwrite-stats').checked;
         const overwriteContentLog = document.getElementById('overwrite-content-log').checked;
 
+        formData.append('mode', mode);
         formData.append('simulate', simulate ? 'true' : 'false');
         formData.append('overwriteSettings', overwriteSettings ? 'true' : 'false');
         formData.append('overwriteSecrets', overwriteSecrets ? 'true' : 'false');

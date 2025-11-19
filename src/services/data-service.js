@@ -458,7 +458,15 @@ export async function processUpload(request, handle) {
         structure = detectStructure(extractRoot, handle);
         unsafeFiles = checkForUnsafeFiles(structure.sourceUserRoot);
 
-        const simulation = parseBooleanFlag(request.body?.simulate, false);
+        const rawMode = typeof request.body?.mode === 'string' ? request.body.mode : null;
+        let simulation;
+        if (rawMode === 'simulate') {
+            simulation = true;
+        } else if (rawMode === 'real') {
+            simulation = false;
+        } else {
+            simulation = parseBooleanFlag(request.body?.simulate, false);
+        }
         const overwriteSettings = parseBooleanFlag(request.body?.overwriteSettings, true);
         const overwriteSecrets = parseBooleanFlag(request.body?.overwriteSecrets, true);
         const overwriteStats = parseBooleanFlag(request.body?.overwriteStats, true);
