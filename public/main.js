@@ -3,7 +3,7 @@ async function apiGet(path) {
         credentials: 'include',
     });
     if (!response.ok) {
-        throw new Error(`Request failed: ${response.status}`);
+        throw new Error(`请求失败：${response.status}`);
     }
     return response.json();
 }
@@ -23,11 +23,11 @@ async function apiPost(path, body) {
     try {
         json = text ? JSON.parse(text) : null;
     } catch {
-        // best-effort parse; fall through
+        // 尝试解析 JSON，失败则退回原始文本
     }
 
     if (!response.ok) {
-        const message = (json && json.message) ? json.message : (text || `Request failed: ${response.status}`);
+        const message = (json && json.message) ? json.message : (text || `请求失败：${response.status}`);
         throw new Error(message);
     }
 
@@ -80,10 +80,11 @@ function uploadWithProgress(formData, simulate) {
             if (progressBar) {
                 progressBar.style.width = `${percent}%`;
             }
+            const line = `上传进度：${percent}%（${loadedMb} MB / ${totalMb} MB）`;
             if (progressText) {
-                progressText.textContent = `Upload progress: ${percent}% (${loadedMb} MB / ${totalMb} MB)`;
+                progressText.textContent = line;
             }
-            appendLog(logEl, `Upload progress: ${percent}% (${loadedMb} MB / ${totalMb} MB)`);
+            appendLog(logEl, line);
         };
 
         xhr.onreadystatechange = () => {
@@ -97,12 +98,12 @@ function uploadWithProgress(formData, simulate) {
             try {
                 json = text ? JSON.parse(text) : null;
             } catch {
-                appendLog(logEl, `Server response is not JSON (status ${status}). Raw response:`);
+                appendLog(logEl, `服务器返回的不是 JSON（状态码 ${status}）。原始响应：`);
                 appendLog(logEl, text.trim());
                 if (errorEl) {
-                    errorEl.textContent = 'Server returned HTML instead of JSON. This is usually a gateway / reverse-proxy error (for example Cloudflare 4xx/5xx or Nginx error page). Please check proxy timeouts and body size limits.';
+                    errorEl.textContent = '服务器返回了 HTML/错误页而不是 JSON，通常是网关或反向代理错误（例如 Cloudflare 4xx/5xx 或 Nginx 错误页）。请检查代理超时和请求体大小限制。';
                 }
-                reject(new Error('Server response is not valid JSON'));
+                reject(new Error('服务器响应不是有效的 JSON'));
                 return;
             }
 
@@ -111,9 +112,9 @@ function uploadWithProgress(formData, simulate) {
 
         xhr.onerror = () => {
             if (errorEl) {
-                errorEl.textContent = 'Network error while uploading. Please try again.';
+                errorEl.textContent = '上传过程中发生网络错误，请稍后重试。';
             }
-            reject(new Error('Network error during upload'));
+            reject(new Error('上传过程中发生网络错误'));
         };
 
         xhr.send(formData);
@@ -140,18 +141,18 @@ async function refreshBackups(status) {
     }
 
     if (!status.exists) {
-        backupsList.textContent = 'No user directory exists for this handle yet, so there are no automatic backups.';
+        backupsList.textContent = '当前 Handle 尚不存在对应的数据目录，因此没有自动备份。';
         return;
     }
 
-    backupsList.textContent = 'Loading backups…';
+    backupsList.textContent = '正在加载备份列表……';
 
     try {
         const data = await apiGet('/api/data/backups');
         const backups = data.backups || [];
 
         if (!backups.length) {
-            backupsList.textContent = 'No upload_*.zip automatic backups found in the last 24 hours.';
+            backupsList.textContent = '最近 24 小时内未找到任何 upload_*.zip 自动备份。';
             return;
         }
 
@@ -172,7 +173,7 @@ async function refreshBackups(status) {
             const sizeMb = backup.size ? (backup.size / (1024 * 1024)).toFixed(2) : '0.00';
             const isCurrent = currentName && backup.name === currentName;
 
-            const label = isCurrent ? `${backup.name} (current rollback point)` : backup.name;
+            const label = isCurrent ? `${backup.name}（当前回滚点）` : backup.name;
 
             return `<div class="backup-row${isCurrent ? ' backup-row-current' : ''}">
     <div>
@@ -180,16 +181,16 @@ async function refreshBackups(status) {
         <div class="hint">${timeText} · ${sizeMb} MB</div>
     </div>
     <div class="backup-row-buttons">
-        <button type="button" data-action="restore" data-name="${backup.name}">Restore</button>
-        <button type="button" data-action="download" data-name="${backup.name}">Download</button>
-        <button type="button" data-action="delete" data-name="${backup.name}">Delete</button>
+        <button type="button" data-action="restore" data-name="${backup.name}">恢复</button>
+        <button type="button" data-action="download" data-name="${backup.name}">下载</button>
+        <button type="button" data-action="delete" data-name="${backup.name}">删除</button>
     </div>
 </div>`;
         });
 
         backupsList.innerHTML = rows.join('\n');
     } catch (error) {
-        backupsList.textContent = `Failed to load backups: ${error.message}`;
+        backupsList.textContent = `加载备份列表失败：${error.message}`;
     }
 }
 
@@ -205,7 +206,7 @@ async function refreshAuthAndStatus() {
     try {
         const auth = await apiGet('/api/auth/me');
         if (!auth.authenticated) {
-            authStatusEl.textContent = 'Not logged in. Please login with your LinuxDo account.';
+            authStatusEl.textContent = '当前未登录，请使用 LinuxDo 账号登录。';
             loginButton.style.display = 'inline-block';
             logoutButton.style.display = 'none';
             userSection.style.display = 'none';
@@ -215,7 +216,7 @@ async function refreshAuthAndStatus() {
             return;
         }
 
-        authStatusEl.textContent = 'Logged in with LinuxDo.';
+        authStatusEl.textContent = '已使用 LinuxDo 账号登录。';
         loginButton.style.display = 'none';
         logoutButton.style.display = 'inline-block';
         userSection.style.display = 'block';
@@ -237,48 +238,48 @@ async function refreshAuthAndStatus() {
         const rollbackButton = document.getElementById('rollback-button');
         if (summaryEl) {
             if (!status.exists) {
-                summaryEl.textContent = 'There is currently no data directory for this handle under DATA_ROOT.';
+                summaryEl.textContent = '当前 DATA_ROOT 下不存在该 Handle 对应的数据目录。';
                 if (rollbackButton) {
                     rollbackButton.disabled = true;
                 }
             } else {
                 const lines = [];
                 const sizeMb = status.size ? (status.size / (1024 * 1024)).toFixed(2) : '0.00';
-                lines.push(`Directory: ${status.path}`);
-                lines.push('Exists: yes');
-                lines.push(`Approx size: ${sizeMb} MB`);
+                lines.push(`目录路径：${status.path}`);
+                lines.push('目录存在：是');
+                lines.push(`大致占用空间：${sizeMb} MB`);
                 if (status.mtime) {
                     try {
                         const local = new Date(status.mtime).toLocaleString();
-                        lines.push(`Last modified: ${local}`);
+                        lines.push(`最后修改时间：${local}`);
                     } catch {
-                        lines.push(`Last modified: ${status.mtime}`);
+                        lines.push(`最后修改时间：${status.mtime}`);
                     }
                 }
                 const keys = status.keyFiles || {};
                 const keyParts = [];
-                keyParts.push(`settings.json: ${keys.settingsJson ? 'present' : 'missing'}`);
-                keyParts.push(`secrets.json: ${keys.secretsJson ? 'present' : 'missing'}`);
-                keyParts.push(`stats.json: ${keys.statsJson ? 'present' : 'missing'}`);
-                keyParts.push(`content.log: ${keys.contentLog ? 'present' : 'missing'}`);
-                lines.push(`Key files: ${keyParts.join(' | ')}`);
+                keyParts.push(`settings.json：${keys.settingsJson ? '存在' : '缺失'}`);
+                keyParts.push(`secrets.json：${keys.secretsJson ? '存在' : '缺失'}`);
+                keyParts.push(`stats.json：${keys.statsJson ? '存在' : '缺失'}`);
+                keyParts.push(`content.log：${keys.contentLog ? '存在' : '缺失'}`);
+                lines.push(`关键文件：${keyParts.join(' | ')}`);
 
                 const rb = status.rollback || null;
                 if (rb && rb.canRollback) {
-                    lines.push('Rollback: available (there is an automatic backup created before the last successful upload).');
+                    lines.push('回滚：可用（存在最近一次成功上传前的自动备份）。');
                     if (rb.backupMtime) {
                         try {
                             const bLocal = new Date(rb.backupMtime).toLocaleString();
-                            lines.push(`Backup created at: ${bLocal}`);
+                            lines.push(`备份创建时间：${bLocal}`);
                         } catch {
-                            lines.push(`Backup created at: ${rb.backupMtime}`);
+                            lines.push(`备份创建时间：${rb.backupMtime}`);
                         }
                     }
                     if (rollbackButton) {
                         rollbackButton.disabled = false;
                     }
                 } else {
-                    lines.push('Rollback: not available (no recent automatic backup found).');
+                    lines.push('回滚：不可用（未找到最近的自动备份）。');
                     if (rollbackButton) {
                         rollbackButton.disabled = true;
                     }
@@ -290,7 +291,7 @@ async function refreshAuthAndStatus() {
 
         await refreshBackups(status);
     } catch (error) {
-        authStatusEl.textContent = `Failed to load status: ${error.message}`;
+        authStatusEl.textContent = `加载状态失败：${error.message}`;
     }
 }
 
@@ -314,7 +315,7 @@ window.addEventListener('DOMContentLoaded', () => {
         try {
             await apiPost('/api/auth/logout', {});
         } catch {
-            // ignore
+            // 忽略登出错误
         }
         await refreshAuthAndStatus();
     });
@@ -327,12 +328,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
         const file = fileInput && fileInput.files && fileInput.files[0];
         if (!file) {
-            resultEl.textContent = 'Please choose a data.zip file first.';
+            resultEl.textContent = '请先选择一个 data.zip 文件。';
             return;
         }
 
         if (file.size > 100 * 1024 * 1024) {
-            resultEl.textContent = 'File is larger than 100MB. Upload rejected on client side.';
+            resultEl.textContent = '文件大于 100MB，已在前端被拒绝上传。';
             return;
         }
 
@@ -357,8 +358,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
         if (progressText) {
             progressText.textContent = simulate
-                ? 'Step 1/2: uploading archive and running simulation on the server…'
-                : 'Step 1/3: uploading archive and extracting on the server…';
+                ? '第 1/2 步：上传归档并在服务器端执行模拟检查……'
+                : '第 1/3 步：上传归档并在服务器端解压……';
         }
         if (errorEl) {
             errorEl.textContent = '';
@@ -376,30 +377,30 @@ window.addEventListener('DOMContentLoaded', () => {
             const { status, json } = await uploadWithProgress(formData, simulate);
 
             if (!json || json.ok === false) {
-                appendLog(resultEl, `Upload failed: ${(json && json.message) || status}`);
+                appendLog(resultEl, `上传失败：${(json && json.message) || status}`);
                 if (json) {
-                    appendLog(resultEl, 'Full JSON response:');
+                    appendLog(resultEl, '完整 JSON 响应：');
                     appendLog(resultEl, JSON.stringify(json, null, 2));
                 }
                 if (errorEl) {
-                    errorEl.textContent = 'Upload failed. See details above.';
+                    errorEl.textContent = '上传失败，详情请查看上方日志。';
                 }
             } else if (json.result && json.result.simulation) {
                 if (progressText) {
-                    progressText.textContent = 'Step 2/2: simulation completed.';
+                    progressText.textContent = '第 2/2 步：模拟检查已完成。';
                 }
-                appendLog(resultEl, 'Simulation result:');
+                appendLog(resultEl, '模拟结果：');
                 appendLog(resultEl, JSON.stringify(json.result, null, 2));
             } else {
                 if (progressText) {
-                    progressText.textContent = 'Step 2/3: extraction and safety checks completed.\nStep 3/3: backup + merge completed.';
+                    progressText.textContent = '第 2/3 步：解压与安全检查完成。\n第 3/3 步：备份与数据合并完成。';
                 }
-                appendLog(resultEl, 'Upload completed. Detailed result:');
+                appendLog(resultEl, '上传完成。详细结果：');
                 appendLog(resultEl, JSON.stringify(json.result, null, 2));
                 await refreshAuthAndStatus();
             }
         } catch (error) {
-            appendLog(resultEl, `Upload error: ${error.message}`);
+            appendLog(resultEl, `上传出错：${error.message}`);
         } finally {
             uploadButton.disabled = false;
             if (fileInput) {
@@ -413,15 +414,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
     rollbackButton.addEventListener('click', async () => {
         const resultEl = document.getElementById('rollback-result');
-        resultEl.textContent = 'Starting rollback…';
+        resultEl.textContent = '正在开始回滚……';
         rollbackButton.disabled = true;
 
         try {
             const json = await apiPost('/api/data/rollback', {});
-            resultEl.textContent = `Rollback completed.\n${JSON.stringify(json.result || json, null, 2)}`;
+            resultEl.textContent = `回滚完成。\n${JSON.stringify(json.result || json, null, 2)}`;
             await refreshAuthAndStatus();
         } catch (error) {
-            resultEl.textContent = `Rollback error: ${error.message}`;
+            resultEl.textContent = `回滚出错：${error.message}`;
         } finally {
             rollbackButton.disabled = false;
         }
@@ -434,7 +435,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
             if (!rawHandle) {
                 if (resultEl) {
-                    resultEl.textContent = 'Please enter the SillyTavern handle you want to operate on.';
+                    resultEl.textContent = '请输入你想操作的 SillyTavern Handle。';
                 }
                 return;
             }
@@ -444,12 +445,12 @@ window.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('st-handle').textContent = result.stHandle;
                 handleInput.value = result.stHandle;
                 if (resultEl) {
-                    resultEl.textContent = `Switched handle to: ${result.stHandle}\nDirectory: ${result.path}`;
+                    resultEl.textContent = `已切换 Handle：${result.stHandle}\n目录路径：${result.path}`;
                 }
                 await refreshAuthAndStatus();
             } catch (error) {
                 if (resultEl) {
-                    resultEl.textContent = `Failed to switch handle: ${error.message}`;
+                    resultEl.textContent = `切换 Handle 失败：${error.message}`;
                 }
             }
         });
@@ -471,24 +472,24 @@ window.addEventListener('DOMContentLoaded', () => {
             if (action === 'restore') {
                 const resultEl = document.getElementById('rollback-result');
                 if (resultEl) {
-                    resultEl.textContent = `Starting restore from backup…\n${name}`;
+                    resultEl.textContent = `正在从备份恢复……\n${name}`;
                 }
                 try {
                     const json = await apiPost(`/api/data/backups/${encodeURIComponent(name)}/restore`, {});
                     if (resultEl) {
-                        resultEl.textContent = `Restore completed.\n${JSON.stringify(json.result || json, null, 2)}`;
+                        resultEl.textContent = `恢复完成。\n${JSON.stringify(json.result || json, null, 2)}`;
                     }
                     await refreshAuthAndStatus();
                 } catch (error) {
                     if (resultEl) {
-                        resultEl.textContent = `Restore error: ${error.message}`;
+                        resultEl.textContent = `恢复出错：${error.message}`;
                     }
                 }
             } else if (action === 'download') {
                 window.open(`/api/data/backups/${encodeURIComponent(name)}`, '_blank');
             } else if (action === 'delete') {
                 // eslint-disable-next-line no-alert
-                const confirmed = window.confirm(`Delete backup?\n${name}`);
+                const confirmed = window.confirm(`确认删除该备份？\n${name}`);
                 if (!confirmed) {
                     return;
                 }
@@ -503,15 +504,15 @@ window.addEventListener('DOMContentLoaded', () => {
                     });
                     const json = await response.json();
                     if (!response.ok || json.ok === false) {
-                        throw new Error(json.message || `Request failed: ${response.status}`);
+                        throw new Error(json.message || `请求失败：${response.status}`);
                     }
                     if (resultEl) {
-                        resultEl.textContent = `Deleted backup: ${name}`;
+                        resultEl.textContent = `已删除备份：${name}`;
                     }
                     await refreshAuthAndStatus();
                 } catch (error) {
                     if (resultEl) {
-                        resultEl.textContent = `Failed to delete backup: ${error.message}`;
+                        resultEl.textContent = `删除备份失败：${error.message}`;
                     }
                 }
             }

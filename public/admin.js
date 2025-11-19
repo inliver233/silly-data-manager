@@ -18,7 +18,7 @@ async function adminApiPost(path, body) {
     });
     const json = await response.json();
     if (!response.ok || json.ok === false) {
-        throw new Error(json.message || `Request failed: ${response.status}`);
+        throw new Error(json.message || `请求失败：${response.status}`);
     }
     return json;
 }
@@ -35,7 +35,7 @@ async function adminApiGet(path) {
     });
     const json = await response.json();
     if (!response.ok || json.ok === false) {
-        throw new Error(json.message || `Request failed: ${response.status}`);
+        throw new Error(json.message || `请求失败：${response.status}`);
     }
     return json;
 }
@@ -66,11 +66,11 @@ window.addEventListener('DOMContentLoaded', () => {
             if (result.csrfToken) {
                 adminCsrfToken = result.csrfToken;
             }
-            loginMessage.textContent = 'Login successful.';
+            loginMessage.textContent = '登录成功。';
             loginSection.style.display = 'none';
             panelSection.style.display = 'block';
         } catch (error) {
-            loginMessage.textContent = `Login failed: ${error.message}`;
+            loginMessage.textContent = `登录失败：${error.message}`;
         }
     });
 
@@ -78,7 +78,7 @@ window.addEventListener('DOMContentLoaded', () => {
         try {
             await adminApiPost('/admin/api/logout', {});
         } catch {
-            // ignore
+            // 忽略登出错误
         }
         adminCsrfToken = null;
         adminUsers = [];
@@ -93,7 +93,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!adminUsers || adminUsers.length === 0) {
-            usersOutput.textContent = 'No users found in logs yet.';
+            usersOutput.textContent = '日志中暂未发现任何用户记录。';
             if (selectedUserSummary) {
                 selectedUserSummary.textContent = '';
             }
@@ -103,9 +103,9 @@ window.addEventListener('DOMContentLoaded', () => {
         const fragments = adminUsers.map((user, index) => {
             const handles = (user.handles || []).join(', ') || '-';
             const label = `#${index + 1} [${user.linuxdoId ?? 'unknown'}] ${user.linuxdoUsername ?? 'unknown'} (${user.linuxdoName ?? ''})`;
-            const stats = `logins: ${user.logins}, uploads: ${user.uploads}, rollbacks: ${user.rollbacks}, handle changes: ${user.handleChanges}`;
-            const time = `first seen: ${user.firstSeen ?? '-'} / last seen: ${user.lastSeen ?? '-'}`;
-            return `<div class="user-row" data-index="${index}"><div>${label}</div><div>Handles: ${handles}</div><div>${stats}</div><div>${time}</div></div>`;
+            const stats = `登录次数：${user.logins}，上传次数：${user.uploads}，回滚次数：${user.rollbacks}，Handle 变更次数：${user.handleChanges}`;
+            const time = `首次出现：${user.firstSeen ?? '-'} / 最后出现：${user.lastSeen ?? '-'}`;
+            return `<div class="user-row" data-index="${index}"><div>${label}</div><div>Handles：${handles}</div><div>${stats}</div><div>${time}</div></div>`;
         });
 
         usersOutput.innerHTML = fragments.join('');
@@ -121,14 +121,14 @@ window.addEventListener('DOMContentLoaded', () => {
                     const user = adminUsers[index];
                     if (selectedUserSummary) {
                         const lines = [];
-                        lines.push(`LinuxDo ID: ${user.linuxdoId ?? 'unknown'}`);
-                        lines.push(`LinuxDo username: ${user.linuxdoUsername ?? 'unknown'}`);
-                        lines.push(`LinuxDo name: ${user.linuxdoName ?? ''}`);
-                        lines.push(`Trust level: ${user.trustLevel ?? 'unknown'}`);
-                        lines.push(`Handles: ${(user.handles || []).join(', ') || '-'}`);
-                        lines.push(`First seen: ${user.firstSeen ?? '-'}`);
-                        lines.push(`Last seen: ${user.lastSeen ?? '-'}`);
-                        lines.push(`Logins: ${user.logins}, uploads: ${user.uploads}, rollbacks: ${user.rollbacks}, handle changes: ${user.handleChanges}`);
+                        lines.push(`LinuxDo ID：${user.linuxdoId ?? 'unknown'}`);
+                        lines.push(`LinuxDo 用户名：${user.linuxdoUsername ?? 'unknown'}`);
+                        lines.push(`LinuxDo 昵称：${user.linuxdoName ?? ''}`);
+                        lines.push(`信任等级：${user.trustLevel ?? 'unknown'}`);
+                        lines.push(`Handles：${(user.handles || []).join(', ') || '-'}`);
+                        lines.push(`首次出现：${user.firstSeen ?? '-'}`);
+                        lines.push(`最后出现：${user.lastSeen ?? '-'}`);
+                        lines.push(`登录次数：${user.logins}，上传次数：${user.uploads}，回滚次数：${user.rollbacks}，Handle 变更次数：${user.handleChanges}`);
                         selectedUserSummary.textContent = lines.join('\n');
                     }
 
@@ -142,7 +142,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (loadUsersButton && usersOutput) {
         loadUsersButton.addEventListener('click', async () => {
-            usersOutput.textContent = 'Loading users…';
+            usersOutput.textContent = '正在加载用户列表……';
             if (selectedUserSummary) {
                 selectedUserSummary.textContent = '';
             }
@@ -152,13 +152,13 @@ window.addEventListener('DOMContentLoaded', () => {
                 selectedUserIndex = null;
                 renderUsers();
             } catch (error) {
-                usersOutput.textContent = `Failed to load users: ${error.message}`;
+                usersOutput.textContent = `加载用户列表失败：${error.message}`;
             }
         });
     }
 
     loadLogsButton.addEventListener('click', async () => {
-        logsOutput.textContent = 'Loading logs…';
+        logsOutput.textContent = '正在加载日志……';
         const params = new URLSearchParams();
         const typeValue = filterType.value;
         const handleValue = filterHandle.value.trim();
@@ -188,7 +188,8 @@ window.addEventListener('DOMContentLoaded', () => {
             const json = await adminApiGet(`/admin/api/logs?${params.toString()}`);
             logsOutput.textContent = JSON.stringify(json.logs, null, 2);
         } catch (error) {
-            logsOutput.textContent = `Failed to load logs: ${error.message}`;
+            logsOutput.textContent = `加载日志失败：${error.message}`;
         }
     });
 });
+

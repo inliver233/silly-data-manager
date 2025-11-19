@@ -1,94 +1,94 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <title>Cloud Tavern Data Upload</title>
+    <title>云酒馆数据上传系统</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div id="app">
-        <h1>Cloud Tavern Data Upload</h1>
+        <h1>云酒馆数据上传系统</h1>
 
         <section class="box">
-            <h2>How this tool works</h2>
+            <h2>使用说明</h2>
             <ol>
-                <li>This page only touches <code>data/{handle}</code> for the selected SillyTavern user. It never modifies global folders such as <code>_storage</code>.</li>
-                <li>Always run a simulation upload first to verify structure and safety, then run a real upload.</li>
-                <li>Before every real upload the system creates an automatic backup, so you can roll back to the state before the last upload.</li>
-                <li>While a real upload is running, avoid heavy writes on the same account on the main site to reduce conflicts.</li>
+                <li>本页面只会操作当前选中 SillyTavern 用户的 <code>data/{handle}</code> 目录，不会修改全局目录（例如 <code>_storage</code>）。</li>
+                <li>建议先进行一次“模拟上传”检查结构与安全无误，再执行“真实上传”。</li>
+                <li>每次真实上传前，系统都会自动创建一份备份，方便将来回滚到上传前的状态。</li>
+                <li>真实上传过程中，尽量不要在主站对同一账号进行大量写操作，以减少冲突风险。</li>
             </ol>
         </section>
 
         <div id="auth-section">
-            <p id="auth-status">Checking login status…</p>
-            <button id="login-button" style="display:none;">Login with LinuxDo</button>
-            <button id="logout-button" style="display:none;">Logout</button>
+            <p id="auth-status">正在检查登录状态……</p>
+            <button id="login-button" style="display:none;">使用 LinuxDo 登录</button>
+            <button id="logout-button" style="display:none;">退出登录</button>
         </div>
 
         <div id="user-section" style="display:none;">
-            <h2>Current user</h2>
-            <p><strong>LinuxDo username:</strong> <span id="linuxdo-username"></span></p>
-            <p><strong>Current SillyTavern handle:</strong> <span id="st-handle"></span></p>
-            <p class="hint">By default the handle is derived from the LinuxDo username via the same normalizeHandle rules as the main site. You can also specify the handle manually.</p>
+            <h2>当前用户</h2>
+            <p><strong>LinuxDo 用户名：</strong> <span id="linuxdo-username"></span></p>
+            <p><strong>当前 SillyTavern Handle：</strong> <span id="st-handle"></span></p>
+            <p class="hint">默认情况下，Handle 会按照主站相同的 normalizeHandle 规则，从 LinuxDo 用户名自动推导。你也可以手动指定。</p>
             <div class="field">
-                <label for="handle-input">Handle you want to operate on:</label>
+                <label for="handle-input">你希望操作的 Handle：</label>
                 <input type="text" id="handle-input">
-                <button id="handle-apply-button">Use this handle</button>
+                <button id="handle-apply-button">使用该 Handle</button>
             </div>
-            <p class="hint">The system will normalize your input and verify that <code>data/{handle}</code> exists under DATA_ROOT on the server.</p>
+            <p class="hint">系统会对你输入的内容进行规范化，并检查服务器 DATA_ROOT 下是否存在对应的 <code>data/{handle}</code> 目录。</p>
         </div>
 
         <div id="status-section" style="display:none;">
-            <h2>Current data status (DATA_ROOT/{handle})</h2>
+            <h2>当前数据状态（DATA_ROOT/{handle}）</h2>
             <div id="status-summary"></div>
             <details>
-                <summary>Show raw status JSON</summary>
+                <summary>查看原始状态 JSON</summary>
                 <pre id="status-json"></pre>
             </details>
         </div>
 
         <div id="upload-section" style="display:none;">
-            <h2>Upload data.zip</h2>
+            <h2>上传 data.zip</h2>
             <p>
-                Select a SillyTavern <code>data.zip</code> archive (max 100MB).
-                Both “single user root” and “full data directory with data/{handle}” layouts are supported;
-                the system will automatically choose the correct user directory for the current handle.
+                请选择从 SillyTavern 导出的 <code>data.zip</code> 备份文件（最大 100MB）。
+                支持“单用户根目录”以及“包含 data/{handle} 的完整 data 目录”两种结构；
+                系统会自动为当前 Handle 选择正确的用户目录。
             </p>
             <div class="field">
-                <label for="data-file">Choose file:</label>
+                <label for="data-file">选择文件：</label>
                 <input type="file" id="data-file" accept=".zip">
             </div>
 
             <fieldset class="field">
-                <legend>Upload mode</legend>
+                <legend>上传模式</legend>
                 <label>
                     <input type="radio" name="mode" value="simulate" checked>
-                    Simulation only (recommended first; does not modify server data)
+                    仅模拟上传（推荐先使用；不会修改服务器数据）
                 </label>
                 <label>
                     <input type="radio" name="mode" value="real">
-                    Real upload (backup + merge into DATA_ROOT/{handle})
+                    真实上传（先备份，再合并到 DATA_ROOT/{handle}）
                 </label>
             </fieldset>
 
             <fieldset class="field">
-                <legend>Root file overwrite options (only for real uploads)</legend>
+                <legend>根目录文件覆盖选项（仅对真实上传生效）</legend>
                 <label>
                     <input type="checkbox" id="overwrite-settings" checked>
-                    Overwrite <code>settings.json</code>
+                    覆盖 <code>settings.json</code>
                 </label>
                 <label>
                     <input type="checkbox" id="overwrite-secrets" checked>
-                    Overwrite <code>secrets.json</code> (API keys etc.)
+                    覆盖 <code>secrets.json</code>（API Key 等敏感配置）
                 </label>
                 <label>
                     <input type="checkbox" id="overwrite-stats" checked>
-                    Overwrite <code>stats.json</code>
+                    覆盖 <code>stats.json</code>
                 </label>
                 <label>
                     <input type="checkbox" id="overwrite-content-log" checked>
-                    Overwrite <code>content.log</code>
+                    覆盖 <code>content.log</code>
                 </label>
             </fieldset>
 
@@ -100,23 +100,23 @@
                 <div id="upload-error" class="error-text"></div>
             </div>
 
-            <button id="upload-button">Start upload</button>
+            <button id="upload-button">开始上传</button>
             <pre id="upload-result"></pre>
         </div>
 
         <div id="rollback-section" style="display:none;">
-            <h2>One-click rollback</h2>
+            <h2>一键回滚</h2>
             <p>
-                Rollback will rename the current <code>DATA_ROOT/{handle}</code> directory to include a
-                <code>__failed_{timestamp}</code> suffix, then restore from the latest automatic
-                <code>upload_*.zip</code> backup created before a successful real upload.
+                回滚会先将当前的 <code>DATA_ROOT/{handle}</code> 目录重命名，添加
+                <code>__failed_{timestamp}</code> 后缀，然后从最后一次成功真实上传前
+                自动创建的 <code>upload_*.zip</code> 备份中恢复。
             </p>
-            <button id="rollback-button">Rollback to state before last upload</button>
+            <button id="rollback-button">回滚到上一次上传前的状态</button>
             <pre id="rollback-result"></pre>
 
             <div id="backups-section">
-                <h3>Automatic backups (last 24 hours)</h3>
-                <p class="hint">Only upload_*.zip archives created by this upload system are shown here. Older backups are automatically cleaned up.</p>
+                <h3>自动备份（最近 24 小时）</h3>
+                <p class="hint">这里只显示由本上传系统创建的 upload_*.zip 备份。更早的备份会自动清理。</p>
                 <div id="backups-list"></div>
             </div>
         </div>
