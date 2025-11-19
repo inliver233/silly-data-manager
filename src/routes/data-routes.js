@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'node:path';
 
 import config from '../config.js';
-import { requireLogin } from '../middleware/auth.js';
+import { requireLogin, requireHandlePasswordVerified } from '../middleware/auth.js';
 import {
     deleteBackupFileForHandle,
     getBackupFileForHandle,
@@ -17,6 +17,7 @@ import { ensureDirectorySync } from '../utils/fs-utils.js';
 
 export const dataRouter = express.Router();
 
+// 状态查询只要求登录，不强制二次密码验证，方便用户在验证前查看当前 Handle 的目录情况
 dataRouter.get('/status', requireLogin, (request, response) => {
     const handle = request.user.stHandle;
     const status = getUserDataStatus(handle);
@@ -46,7 +47,7 @@ const upload = multer({
     },
 });
 
-dataRouter.post('/upload', requireLogin, upload.single('dataZip'), async (request, response) => {
+dataRouter.post('/upload', requireHandlePasswordVerified, upload.single('dataZip'), async (request, response) => {
     request._clientIp = request._clientIp || request.ip;
     request._userAgent = request._userAgent || request.headers['user-agent'];
 
@@ -74,7 +75,7 @@ dataRouter.post('/upload', requireLogin, upload.single('dataZip'), async (reques
     }
 });
 
-dataRouter.post('/rollback', requireLogin, async (request, response) => {
+dataRouter.post('/rollback', requireHandlePasswordVerified, async (request, response) => {
     request._clientIp = request._clientIp || request.ip;
     request._userAgent = request._userAgent || request.headers['user-agent'];
 
@@ -94,7 +95,7 @@ dataRouter.post('/rollback', requireLogin, async (request, response) => {
     }
 });
 
-dataRouter.post('/backups/:name/restore', requireLogin, async (request, response) => {
+dataRouter.post('/backups/:name/restore', requireHandlePasswordVerified, async (request, response) => {
     request._clientIp = request._clientIp || request.ip;
     request._userAgent = request._userAgent || request.headers['user-agent'];
 
@@ -118,7 +119,7 @@ dataRouter.post('/backups/:name/restore', requireLogin, async (request, response
     }
 });
 
-dataRouter.get('/backups', requireLogin, (request, response) => {
+dataRouter.get('/backups', requireHandlePasswordVerified, (request, response) => {
     const handle = request.user.stHandle;
     const backups = getUploadBackups(handle, request.user.linuxdo);
     return response.json({
@@ -127,7 +128,7 @@ dataRouter.get('/backups', requireLogin, (request, response) => {
     });
 });
 
-dataRouter.get('/backups/:name', requireLogin, (request, response) => {
+dataRouter.get('/backups/:name', requireHandlePasswordVerified, (request, response) => {
     const handle = request.user.stHandle;
     const linuxdoUser = request.user.linuxdo;
     const name = request.params.name;
@@ -143,7 +144,7 @@ dataRouter.get('/backups/:name', requireLogin, (request, response) => {
     return response.download(backup.path, backup.name);
 });
 
-dataRouter.delete('/backups/:name', requireLogin, (request, response) => {
+dataRouter.delete('/backups/:name', requireHandlePasswordVerified, (request, response) => {
     const handle = request.user.stHandle;
     const linuxdoUser = request.user.linuxdo;
     const name = request.params.name;

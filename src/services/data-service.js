@@ -37,15 +37,15 @@ function getUploadTempDir(linuxdoUser) {
     return base;
 }
 
-export function getUploadBackups(handle, linuxdoUser, maxAgeMs = 24 * 60 * 60 * 1000) {
+export function getUploadBackups(handle, linuxdoUser, maxCount = 3) {
     const backupsDir = getUserBackupsDir(handle, linuxdoUser);
     if (!fs.existsSync(backupsDir)) {
         return [];
     }
 
-    const now = Date.now();
     const entries = fs.readdirSync(backupsDir);
-    const backups = [];
+    /** @type {{ name: string, path: string, size: number, mtime: string, mtimeMs: number }[]} */
+    const allBackups = [];
 
     for (const name of entries) {
         if (!name.startsWith('upload_') || !name.endsWith('.zip')) {
@@ -59,31 +59,52 @@ export function getUploadBackups(handle, linuxdoUser, maxAgeMs = 24 * 60 * 60 * 
             continue;
         }
 
-        const ageMs = now - stat.mtimeMs;
-        if (ageMs > maxAgeMs) {
-            try {
-                fs.unlinkSync(fullPath);
-            } catch {
-                // ignore cleanup errors
-            }
-            continue;
-        }
-
-        backups.push({
+        allBackups.push({
             name,
             path: fullPath,
             size: stat.size,
             mtime: stat.mtime.toISOString(),
+            mtimeMs: stat.mtimeMs,
         });
     }
 
-    backups.sort((a, b) => {
-        const ta = new Date(a.mtime).getTime();
-        const tb = new Date(b.mtime).getTime();
-        return tb - ta;
-    });
+    if (allBackups.length === 0) {
+        return [];
+    }
 
-    return backups;
+    // 最多保留 maxCount 个备份，其中第一个（最早的）永远保留，其他为滚动备份。
+    const safeMaxCount = Math.max(1, Number.isFinite(maxCount) ? Number(maxCount) : 3);
+
+    // 先按时间从早到晚排序，方便确定“首个备份”
+    allBackups.sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+    if (allBackups.length <= safeMaxCount) {
+        // 不需要删除，只需按时间从新到旧返回
+        return allBackups
+            .sort((a, b) => b.mtimeMs - a.mtimeMs)
+            .map(({ mtimeMs, ...rest }) => rest);
+    }
+
+    const original = allBackups[0];
+    const rest = allBackups.slice(1);
+
+    // 在剩余备份中只保留最新的 safeMaxCount - 1 个
+    rest.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const keep = rest.slice(0, safeMaxCount - 1);
+    const toDelete = rest.slice(safeMaxCount - 1);
+
+    for (const backup of toDelete) {
+        try {
+            fs.unlinkSync(backup.path);
+        } catch {
+            // ignore cleanup errors
+        }
+    }
+
+    const visible = [original, ...keep];
+    visible.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    return visible.map(({ mtimeMs, ...rest }) => rest);
 }
 
 export function getBackupFileForHandle(handle, linuxdoUser, backupName) {

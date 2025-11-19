@@ -2,9 +2,11 @@ async function apiGet(path) {
     const response = await fetch(path, {
         credentials: 'include',
     });
+
     if (!response.ok) {
         throw new Error(`请求失败：${response.status}`);
     }
+
     return response.json();
 }
 
@@ -20,10 +22,11 @@ async function apiPost(path, body) {
 
     const text = await response.text();
     let json = null;
+
     try {
         json = text ? JSON.parse(text) : null;
     } catch {
-        // 尝试解析 JSON，失败则退回原始文本
+        // 返回不是 JSON 时保留原始文本
     }
 
     if (!response.ok) {
@@ -95,13 +98,14 @@ function uploadWithProgress(formData, simulate) {
             const status = xhr.status;
             const text = xhr.responseText || '';
             let json;
+
             try {
                 json = text ? JSON.parse(text) : null;
             } catch {
-                appendLog(logEl, `服务器返回的不是 JSON（状态码 ${status}）。原始响应：`);
+                appendLog(logEl, `服务器返回的不是 JSON，状态码：${status}，原始响应内容：`);
                 appendLog(logEl, text.trim());
                 if (errorEl) {
-                    errorEl.textContent = '服务器返回了 HTML/错误页而不是 JSON，通常是网关或反向代理错误（例如 Cloudflare 4xx/5xx 或 Nginx 错误页）。请检查代理超时和请求体大小限制。';
+                    errorEl.textContent = '上传失败：服务器返回了 HTML/错误页面，而不是 JSON。请检查反向代理/Cloudflare/Nginx 等配置。';
                 }
                 reject(new Error('服务器响应不是有效的 JSON'));
                 return;
@@ -121,15 +125,22 @@ function uploadWithProgress(formData, simulate) {
     });
 }
 
-function getBackupNameFromPath(path) {
-    if (!path || typeof path !== 'string') {
-        return null;
+function formatDate(isoString) {
+    if (!isoString) {
+        return '-';
     }
-    const parts = path.split(/[\\/]/);
-    if (!parts.length) {
-        return null;
+    try {
+        return new Date(isoString).toLocaleString();
+    } catch {
+        return isoString;
     }
-    return parts[parts.length - 1] || null;
+}
+
+function formatSizeMb(bytes) {
+    if (!bytes || typeof bytes !== 'number') {
+        return '0.00';
+    }
+    return (bytes / (1024 * 1024)).toFixed(2);
 }
 
 async function refreshBackups(status) {
@@ -141,54 +152,38 @@ async function refreshBackups(status) {
     }
 
     if (!status.exists) {
-        backupsList.textContent = '当前 Handle 尚不存在对应的数据目录，因此没有自动备份。';
+        backupsList.textContent = '当前 Handle 在 DATA_ROOT 下不存在对应的数据目录，暂无可用备份。';
         return;
     }
 
-    backupsList.textContent = '正在加载备份列表……';
-
     try {
-        const data = await apiGet('/api/data/backups');
-        const backups = data.backups || [];
+        const json = await apiGet('/api/data/backups');
+        const backups = json.backups || [];
 
         if (!backups.length) {
-            backupsList.textContent = '最近 24 小时内未找到任何 upload_*.zip 自动备份。';
+            backupsList.textContent = '当前没有可用备份。';
             return;
         }
 
-        const rollback = status.rollback || null;
-        const lastUpload = status.lastUpload || null;
-        const currentPath = (rollback && rollback.backupPath) || (lastUpload && lastUpload.backupZipPath) || null;
-        const currentName = getBackupNameFromPath(currentPath);
+        const fragments = backups.map(backup => {
+            const sizeMb = formatSizeMb(backup.size);
+            const time = formatDate(backup.mtime);
+            const name = backup.name;
 
-        const rows = backups.map(backup => {
-            const timeText = (() => {
-                try {
-                    return new Date(backup.mtime).toLocaleString();
-                } catch {
-                    return backup.mtime;
-                }
-            })();
-
-            const sizeMb = backup.size ? (backup.size / (1024 * 1024)).toFixed(2) : '0.00';
-            const isCurrent = currentName && backup.name === currentName;
-
-            const label = isCurrent ? `${backup.name}（当前回滚点）` : backup.name;
-
-            return `<div class="backup-row${isCurrent ? ' backup-row-current' : ''}">
-    <div>
-        <div>${label}</div>
-        <div class="hint">${timeText} · ${sizeMb} MB</div>
-    </div>
-    <div class="backup-row-buttons">
-        <button type="button" data-action="restore" data-name="${backup.name}">恢复</button>
-        <button type="button" data-action="download" data-name="${backup.name}">下载</button>
-        <button type="button" data-action="delete" data-name="${backup.name}">删除</button>
-    </div>
-</div>`;
+            return [
+                '<div class="backup-row">',
+                `<div><strong>${name}</strong></div>`,
+                `<div>大小：${sizeMb} MB，时间：${time}</div>`,
+                '<div class="backup-row-buttons">',
+                `<button data-action="restore" data-name="${encodeURIComponent(name)}">从该备份恢复</button>`,
+                `<button data-action="download" data-name="${encodeURIComponent(name)}">下载备份</button>`,
+                `<button data-action="delete" data-name="${encodeURIComponent(name)}">删除备份</button>`,
+                '</div>',
+                '</div>',
+            ].join('');
         });
 
-        backupsList.innerHTML = rows.join('\n');
+        backupsList.innerHTML = fragments.join('\n');
     } catch (error) {
         backupsList.textContent = `加载备份列表失败：${error.message}`;
     }
@@ -198,6 +193,7 @@ async function refreshAuthAndStatus() {
     const authStatusEl = document.getElementById('auth-status');
     const loginButton = document.getElementById('login-button');
     const logoutButton = document.getElementById('logout-button');
+
     const userSection = document.getElementById('user-section');
     const statusSection = document.getElementById('status-section');
     const uploadSection = document.getElementById('upload-section');
@@ -216,7 +212,6 @@ async function refreshAuthAndStatus() {
             return;
         }
 
-        authStatusEl.textContent = '已使用 LinuxDo 账号登录。';
         loginButton.style.display = 'none';
         logoutButton.style.display = 'inline-block';
         userSection.style.display = 'block';
@@ -224,38 +219,71 @@ async function refreshAuthAndStatus() {
         uploadSection.style.display = 'block';
         rollbackSection.style.display = 'block';
 
-        document.getElementById('linuxdo-username').textContent = auth.linuxdo.username;
-        document.getElementById('st-handle').textContent = auth.stHandle;
+        const linuxdoUsernameEl = document.getElementById('linuxdo-username');
+        const stHandleEl = document.getElementById('st-handle');
         const handleInput = document.getElementById('handle-input');
+        const uploadButton = document.getElementById('upload-button');
+        const rollbackButton = document.getElementById('rollback-button');
+        const handleWarningEl = document.getElementById('handle-verify-warning');
+
+        const handleVerified = Boolean(auth.handleVerified);
+
+        if (linuxdoUsernameEl) {
+            linuxdoUsernameEl.textContent = auth.linuxdo?.username || '-';
+        }
+        if (stHandleEl) {
+            stHandleEl.textContent = auth.stHandle || '';
+        }
         if (handleInput && !handleInput.value) {
             handleInput.value = auth.stHandle || '';
         }
 
+        if (!handleVerified) {
+            authStatusEl.textContent = '已使用 LinuxDo 账号登录，但当前 Handle 未通过 SillyTavern 密码验证。请在下方输入 Handle 和密码完成绑定后再进行上传/回滚。';
+            if (handleWarningEl) {
+                handleWarningEl.textContent = '当前 Handle 未验证：上传 / 回滚 按钮已锁定，请先完成 SillyTavern Handle + 密码验证。';
+            }
+            if (uploadButton) {
+                uploadButton.disabled = true;
+            }
+            if (rollbackButton) {
+                rollbackButton.disabled = true;
+            }
+        } else {
+            authStatusEl.textContent = '已使用 LinuxDo 账号登录，当前 Handle 已通过 SillyTavern 密码验证，可以安全执行上传和回滚。';
+            if (handleWarningEl) {
+                handleWarningEl.textContent = '';
+            }
+            if (uploadButton) {
+                uploadButton.disabled = false;
+            }
+            if (rollbackButton) {
+                rollbackButton.disabled = false;
+            }
+        }
+
         const status = await apiGet('/api/data/status');
-        document.getElementById('status-json').textContent = JSON.stringify(status, null, 2);
+
+        const statusJsonEl = document.getElementById('status-json');
+        if (statusJsonEl) {
+            statusJsonEl.textContent = JSON.stringify(status, null, 2);
+        }
 
         const summaryEl = document.getElementById('status-summary');
-        const rollbackButton = document.getElementById('rollback-button');
+
         if (summaryEl) {
             if (!status.exists) {
                 summaryEl.textContent = '当前 DATA_ROOT 下不存在该 Handle 对应的数据目录。';
-                if (rollbackButton) {
-                    rollbackButton.disabled = true;
-                }
             } else {
                 const lines = [];
-                const sizeMb = status.size ? (status.size / (1024 * 1024)).toFixed(2) : '0.00';
+                const sizeMb = formatSizeMb(status.size);
                 lines.push(`目录路径：${status.path}`);
                 lines.push('目录存在：是');
-                lines.push(`大致占用空间：${sizeMb} MB`);
+                lines.push(`占用空间：${sizeMb} MB`);
                 if (status.mtime) {
-                    try {
-                        const local = new Date(status.mtime).toLocaleString();
-                        lines.push(`最后修改时间：${local}`);
-                    } catch {
-                        lines.push(`最后修改时间：${status.mtime}`);
-                    }
+                    lines.push(`最后修改时间：${formatDate(status.mtime)}`);
                 }
+
                 const keys = status.keyFiles || {};
                 const keyParts = [];
                 keyParts.push(`settings.json：${keys.settingsJson ? '存在' : '缺失'}`);
@@ -266,23 +294,12 @@ async function refreshAuthAndStatus() {
 
                 const rb = status.rollback || null;
                 if (rb && rb.canRollback) {
-                    lines.push('回滚：可用（存在最近一次成功上传前的自动备份）。');
+                    lines.push('回滚：已启用，可恢复到最近一次真实上传前的自动备份。');
                     if (rb.backupMtime) {
-                        try {
-                            const bLocal = new Date(rb.backupMtime).toLocaleString();
-                            lines.push(`备份创建时间：${bLocal}`);
-                        } catch {
-                            lines.push(`备份创建时间：${rb.backupMtime}`);
-                        }
-                    }
-                    if (rollbackButton) {
-                        rollbackButton.disabled = false;
+                        lines.push(`备份时间：${formatDate(rb.backupMtime)}`);
                     }
                 } else {
-                    lines.push('回滚：不可用（未找到最近的自动备份）。');
-                    if (rollbackButton) {
-                        rollbackButton.disabled = true;
-                    }
+                    lines.push('回滚：未启用，未找到可用的自动备份。');
                 }
 
                 summaryEl.textContent = lines.join('\n');
@@ -291,7 +308,7 @@ async function refreshAuthAndStatus() {
 
         await refreshBackups(status);
     } catch (error) {
-        authStatusEl.textContent = `加载状态失败：${error.message}`;
+        authStatusEl.textContent = `刷新状态失败：${error.message}`;
     }
 }
 
@@ -303,6 +320,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const handleApplyButton = document.getElementById('handle-apply-button');
     const handleInput = document.getElementById('handle-input');
+    const handlePasswordInput = document.getElementById('handle-password');
 
     const backupsList = document.getElementById('backups-list');
 
@@ -333,7 +351,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         if (file.size > 100 * 1024 * 1024) {
-            resultEl.textContent = '文件大于 100MB，已在前端被拒绝上传。';
+            resultEl.textContent = '文件超过 100MB，前端将拒绝上传，请拆分或压缩后再试。';
             return;
         }
 
@@ -358,9 +376,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
         if (progressText) {
             progressText.textContent = simulate
-                ? '第 1/2 步：上传归档并在服务器端执行模拟检查……'
-                : '第 1/3 步：上传归档并在服务器端解压……';
+                ? '步骤 1/2：正在上传压缩包（模拟模式）...'
+                : '步骤 1/3：正在上传压缩包...';
         }
+
         if (errorEl) {
             errorEl.textContent = '';
         }
@@ -374,33 +393,36 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const { status, json } = await uploadWithProgress(formData, simulate);
+            const { json } = await uploadWithProgress(formData, simulate);
+            if (!json) {
+                resultEl.textContent = '上传完成，但服务器未返回数据。';
+                return;
+            }
 
-            if (!json || json.ok === false) {
-                appendLog(resultEl, `上传失败：${(json && json.message) || status}`);
-                if (json) {
-                    appendLog(resultEl, '完整 JSON 响应：');
-                    appendLog(resultEl, JSON.stringify(json, null, 2));
+            if (json.ok === false) {
+                if (json.result) {
+                    appendLog(resultEl, '服务器返回错误：');
+                    appendLog(resultEl, JSON.stringify(json.result, null, 2));
                 }
                 if (errorEl) {
-                    errorEl.textContent = '上传失败，详情请查看上方日志。';
+                    errorEl.textContent = json.message || '上传失败，请查看服务器日志。';
                 }
             } else if (json.result && json.result.simulation) {
                 if (progressText) {
-                    progressText.textContent = '第 2/2 步：模拟检查已完成。';
+                    progressText.textContent = '步骤 2/2：模拟检查完成。';
                 }
                 appendLog(resultEl, '模拟结果：');
                 appendLog(resultEl, JSON.stringify(json.result, null, 2));
             } else {
                 if (progressText) {
-                    progressText.textContent = '第 2/3 步：解压与安全检查完成。\n第 3/3 步：备份与数据合并完成。';
+                    progressText.textContent = '步骤 2/3：解压与安全检查完成。\n步骤 3/3：数据合并完成。';
                 }
-                appendLog(resultEl, '上传完成。详细结果：');
+                appendLog(resultEl, '上传完成，详细结果：');
                 appendLog(resultEl, JSON.stringify(json.result, null, 2));
                 await refreshAuthAndStatus();
             }
         } catch (error) {
-            appendLog(resultEl, `上传出错：${error.message}`);
+            appendLog(resultEl, `上传失败：${error.message}`);
         } finally {
             uploadButton.disabled = false;
             if (fileInput) {
@@ -414,36 +436,45 @@ window.addEventListener('DOMContentLoaded', () => {
 
     rollbackButton.addEventListener('click', async () => {
         const resultEl = document.getElementById('rollback-result');
-        resultEl.textContent = '正在开始回滚……';
+        resultEl.textContent = '正在执行回滚操作...';
         rollbackButton.disabled = true;
 
         try {
             const json = await apiPost('/api/data/rollback', {});
-            resultEl.textContent = `回滚完成。\n${JSON.stringify(json.result || json, null, 2)}`;
+            resultEl.textContent = `回滚完成：\n${JSON.stringify(json.result || json, null, 2)}`;
             await refreshAuthAndStatus();
         } catch (error) {
-            resultEl.textContent = `回滚出错：${error.message}`;
+            resultEl.textContent = `回滚失败：${error.message}`;
         } finally {
             rollbackButton.disabled = false;
         }
     });
 
-    if (handleApplyButton && handleInput) {
+    if (handleApplyButton && handleInput && handlePasswordInput) {
         handleApplyButton.addEventListener('click', async () => {
             const rawHandle = handleInput.value.trim();
+            const password = handlePasswordInput.value;
             const resultEl = document.getElementById('upload-result');
 
             if (!rawHandle) {
                 if (resultEl) {
-                    resultEl.textContent = '请输入你想操作的 SillyTavern Handle。';
+                    resultEl.textContent = '请先输入要绑定的 SillyTavern Handle。';
+                }
+                return;
+            }
+
+            if (!password) {
+                if (resultEl) {
+                    resultEl.textContent = '请输入 SillyTavern 登录密码，然后再点击“使用此 Handle + 密码”。';
                 }
                 return;
             }
 
             try {
-                const result = await apiPost('/api/auth/handle', { rawHandle });
+                const result = await apiPost('/api/auth/handle', { rawHandle, password });
                 document.getElementById('st-handle').textContent = result.stHandle;
                 handleInput.value = result.stHandle;
+                handlePasswordInput.value = '';
                 if (resultEl) {
                     resultEl.textContent = `已切换 Handle：${result.stHandle}\n目录路径：${result.path}`;
                 }
@@ -464,25 +495,27 @@ window.addEventListener('DOMContentLoaded', () => {
             }
 
             const action = target.getAttribute('data-action');
-            const name = target.getAttribute('data-name');
-            if (!action || !name) {
+            const nameEncoded = target.getAttribute('data-name');
+            if (!action || !nameEncoded) {
                 return;
             }
+
+            const name = decodeURIComponent(nameEncoded);
 
             if (action === 'restore') {
                 const resultEl = document.getElementById('rollback-result');
                 if (resultEl) {
-                    resultEl.textContent = `正在从备份恢复……\n${name}`;
+                    resultEl.textContent = `正在从备份恢复数据：\n${name}`;
                 }
                 try {
                     const json = await apiPost(`/api/data/backups/${encodeURIComponent(name)}/restore`, {});
                     if (resultEl) {
-                        resultEl.textContent = `恢复完成。\n${JSON.stringify(json.result || json, null, 2)}`;
+                        resultEl.textContent = `恢复完成：\n${JSON.stringify(json.result || json, null, 2)}`;
                     }
                     await refreshAuthAndStatus();
                 } catch (error) {
                     if (resultEl) {
-                        resultEl.textContent = `恢复出错：${error.message}`;
+                        resultEl.textContent = `恢复失败：${error.message}`;
                     }
                 }
             } else if (action === 'download') {
@@ -519,5 +552,7 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // 首次加载时刷新状态
     refreshAuthAndStatus();
 });
+

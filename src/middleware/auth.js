@@ -3,6 +3,7 @@ export function populateUserFromSession(request, _response, next) {
         request.user = {
             linuxdo: request.session.linuxdo,
             stHandle: request.session.stHandle,
+            handleVerified: Boolean(request.session.handleVerified),
         };
     }
 
@@ -12,6 +13,18 @@ export function populateUserFromSession(request, _response, next) {
 export function requireLogin(request, response, next) {
     if (!request.user) {
         return response.status(401).json({ error: 'Not authenticated' });
+    }
+
+    return next();
+}
+
+export function requireHandlePasswordVerified(request, response, next) {
+    if (!request.user) {
+        return response.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (!request.user.handleVerified) {
+        return response.status(403).json({ error: 'Handle password verification required' });
     }
 
     return next();

@@ -2,26 +2,26 @@
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <title>云酒馆数据上传系统</title>
+    <title>数据上传系统</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div id="app">
-        <h1>云酒馆数据上传系统</h1>
+        <h1>数据上传系统</h1>
 
         <section class="box">
             <h2>使用说明</h2>
             <ol>
-                <li>本页面只会操作当前选中 SillyTavern 用户的 <code>data/{handle}</code> 目录，不会修改全局目录（例如 <code>_storage</code>）。</li>
-                <li>建议先进行一次“模拟上传”检查结构与安全无误，再执行“真实上传”。</li>
-                <li>每次真实上传前，系统都会自动创建一份备份，方便将来回滚到上传前的状态。</li>
-                <li>真实上传过程中，尽量不要在主站对同一账号进行大量写操作，以减少冲突风险。</li>
+                <li>本页面只会对当前选中的 SillyTavern 用户 <code>data/{handle}</code> 目录进行操作，不会修改全局目录（如 <code>_storage</code>）。</li>
+                <li>建议先执行一次“模拟上传”检查结构与安全，再执行“真实上传”。</li>
+                <li>每次真实上传前，系统都会自动创建一份备份，方便你将数据回滚到上传前状态。</li>
+                <li>真实上传时，请尽量只在本站同一账号下操作，避免多个地方同时改动同一个 Handle 的数据。</li>
             </ol>
         </section>
 
         <div id="auth-section">
-            <p id="auth-status">正在检查登录状态……</p>
+            <p id="auth-status">正在检查登录状态...</p>
             <button id="login-button" style="display:none;">使用 LinuxDo 登录</button>
             <button id="logout-button" style="display:none;">退出登录</button>
         </div>
@@ -30,13 +30,18 @@
             <h2>当前用户</h2>
             <p><strong>LinuxDo 用户名：</strong> <span id="linuxdo-username"></span></p>
             <p><strong>当前 SillyTavern Handle：</strong> <span id="st-handle"></span></p>
-            <p class="hint">默认情况下，Handle 会按照主站相同的 normalizeHandle 规则，从 LinuxDo 用户名自动推导。你也可以手动指定。</p>
+            <p class="hint">默认情况下，Handle 会按照主站相同的 normalizeHandle 规则，从 LinuxDo 用户名自动推导，也可以手动指定。</p>
             <div class="field">
-                <label for="handle-input">你希望操作的 Handle：</label>
+                <label for="handle-input">要绑定的 SillyTavern Handle：</label>
                 <input type="text" id="handle-input">
-                <button id="handle-apply-button">使用该 Handle</button>
             </div>
-            <p class="hint">系统会对你输入的内容进行规范化，并检查服务器 DATA_ROOT 下是否存在对应的 <code>data/{handle}</code> 目录。</p>
+            <div class="field">
+                <label for="handle-password">该 Handle 对应的 SillyTavern 登录密码：</label>
+                <input type="password" id="handle-password" autocomplete="current-password">
+                <button id="handle-apply-button">使用此 Handle + 密码</button>
+            </div>
+            <p id="handle-verify-warning" class="error-text"></p>
+            <p class="hint">系统会使用你输入的 SillyTavern 账号密码做一次校验，并检查 DATA_ROOT 下是否存在对应的 <code>data/{handle}</code> 目录。</p>
         </div>
 
         <div id="status-section" style="display:none;">
@@ -51,8 +56,8 @@
         <div id="upload-section" style="display:none;">
             <h2>上传 data.zip</h2>
             <p>
-                请选择从 SillyTavern 导出的 <code>data.zip</code> 备份文件（最大 100MB）。
-                支持“单用户根目录”以及“包含 data/{handle} 的完整 data 目录”两种结构；
+                请选择从 SillyTavern 导出的 <code>data.zip</code> 压缩包，大小不超过 100MB。
+                支持“单用户目录”以及包含多用户数据的 <code>data/{handle}</code> 结构，
                 系统会自动为当前 Handle 选择正确的用户目录。
             </p>
             <div class="field">
@@ -64,16 +69,16 @@
                 <legend>上传模式</legend>
                 <label>
                     <input type="radio" name="mode" value="simulate" checked>
-                    仅模拟上传（推荐先使用；不会修改服务器数据）
+                    仅模拟上传（推荐先使用，不会修改服务器数据）
                 </label>
                 <label>
                     <input type="radio" name="mode" value="real">
-                    真实上传（先备份，再合并到 DATA_ROOT/{handle}）
+                    真实上传（会在备份后合并到 DATA_ROOT/{handle}）
                 </label>
             </fieldset>
 
             <fieldset class="field">
-                <legend>根目录文件覆盖选项（仅对真实上传生效）</legend>
+                <legend>根目录文件覆盖选项（仅真实上传时生效）</legend>
                 <label>
                     <input type="checkbox" id="overwrite-settings" checked>
                     覆盖 <code>settings.json</code>
@@ -107,16 +112,19 @@
         <div id="rollback-section" style="display:none;">
             <h2>一键回滚</h2>
             <p>
-                回滚会先将当前的 <code>DATA_ROOT/{handle}</code> 目录重命名，添加
-                <code>__failed_{timestamp}</code> 后缀，然后从最后一次成功真实上传前
-                自动创建的 <code>upload_*.zip</code> 备份中恢复。
+                回滚会先将当前 <code>DATA_ROOT/{handle}</code> 目录整体重命名为
+                <code>__failed_{timestamp}</code>，然后从最近一次成功真实上传前
+                自动创建的 <code>upload_*.zip</code> 备份恢复数据。
             </p>
-            <button id="rollback-button">回滚到上一次上传前的状态</button>
+            <button id="rollback-button">回滚到最近一次上传前状态</button>
             <pre id="rollback-result"></pre>
 
             <div id="backups-section">
-                <h3>自动备份（最近 24 小时）</h3>
-                <p class="hint">这里只显示由本上传系统创建的 upload_*.zip 备份。更早的备份会自动清理。</p>
+                <h3>自动备份（最多保留 3 个）</h3>
+                <p class="hint">
+                    系统始终保留首次创建的备份作为“最初状态”，其余最多保留 2 个最近的备份；
+                    当产生新的备份时，最旧的非首个备份会被删除。
+                </p>
                 <div id="backups-list"></div>
             </div>
         </div>
@@ -125,3 +133,4 @@
     <script src="/main.js"></script>
 </body>
 </html>
+
