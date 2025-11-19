@@ -56,9 +56,47 @@ async function refreshAuthAndStatus() {
 
         document.getElementById('linuxdo-username').textContent = auth.linuxdo.username;
         document.getElementById('st-handle').textContent = auth.stHandle;
+        const handleInput = document.getElementById('handle-input');
+        if (handleInput && !handleInput.value) {
+            handleInput.value = auth.stHandle || '';
+        }
 
         const status = await apiGet('/api/data/status');
         document.getElementById('status-json').textContent = JSON.stringify(status, null, 2);
+
+        const summaryEl = document.getElementById('status-summary');
+        if (summaryEl) {
+            if (!status.exists) {
+                summaryEl.textContent = '服务器上还没有该 handle 对应的数据目录。';
+            } else {
+                const lines = [];
+                const sizeMb = status.size ? (status.size / (1024 * 1024)).toFixed(2) : '0.00';
+                lines.push(`数据目录：${status.path}`);
+                lines.push(`是否存在：是`);
+                lines.push(`数据大小：${sizeMb} MB`);
+                if (status.mtime) {
+                    try {
+                        const local = new Date(status.mtime).toLocaleString();
+                        lines.push(`最后修改时间：${local}`);
+                    } catch {
+                        lines.push(`最后修改时间：${status.mtime}`);
+                    }
+                }
+                const keys = status.keyFiles || {};
+                const keyParts = [];
+                keyParts.push(`settings.json（${keys.settingsJson ? '存在' : '缺失'}）`);
+                keyParts.push(`secrets.json（${keys.secretsJson ? '存在' : '缺失'}）`);
+                keyParts.push(`stats.json（${keys.statsJson ? '存在' : '缺失'}）`);
+                keyParts.push(`content.log（${keys.contentLog ? '存在' : '缺失'}）`);
+                lines.push(`关键文件：${keyParts.join('，')}`);
+                if (status.lastUpload) {
+                    lines.push('最近一次上传：已记录（可使用“回滚”恢复到上传前状态）。');
+                } else {
+                    lines.push('最近一次上传：暂无记录。');
+                }
+                summaryEl.textContent = lines.join('\n');
+            }
+        }
     } catch (error) {
         authStatusEl.textContent = `加载状态失败：${error.message}`;
     }
@@ -157,5 +195,35 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    if (handleApplyButton && handleInput) {
+        handleApplyButton.addEventListener('click', async () => {
+            const rawHandle = handleInput.value.trim();
+            const resultEl = document.getElementById('upload-result');
+
+            if (!rawHandle) {
+                if (resultEl) {
+                    resultEl.textContent = '请输入想要操作的 SillyTavern handle 或名称。';
+                }
+                return;
+            }
+
+            try {
+                const result = await apiPost('/api/auth/handle', { rawHandle });
+                document.getElementById('st-handle').textContent = result.stHandle;
+                handleInput.value = result.stHandle;
+                if (resultEl) {
+                    resultEl.textContent = `已切换到 handle：${result.stHandle}\n对应目录：${result.path}`;
+                }
+                await refreshAuthAndStatus();
+            } catch (error) {
+                if (resultEl) {
+                    resultEl.textContent = `切换 handle 失败：${error.message}`;
+                }
+            }
+        });
+    }
+
     refreshAuthAndStatus();
 });
+    const handleApplyButton = document.getElementById('handle-apply-button');
+    const handleInput = document.getElementById('handle-input');

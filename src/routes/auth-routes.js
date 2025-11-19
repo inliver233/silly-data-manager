@@ -1,9 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import axios from 'axios';
 import crypto from 'node:crypto';
 
 import config from '../config.js';
 import { normalizeHandle } from '../utils/handles.js';
+import { requireLogin } from '../middleware/auth.js';
+import { writeOperationLog } from '../services/log-service.js';
 
 export const authRouter = express.Router();
 
@@ -42,6 +46,54 @@ authRouter.get('/login', (request, response) => {
     }
 
     return response.redirect(authorizeUrl.toString());
+});
+
+authRouter.post('/handle', requireLogin, (request, response) => {
+    const rawHandle = typeof request.body?.rawHandle === 'string' ? request.body.rawHandle : '';
+    const normalized = normalizeHandle(rawHandle);
+
+    if (!normalized) {
+        return response.status(400).json({
+            ok: false,
+            message: '无效的 SillyTavern 名称或 handle，规范化后为空。',
+        });
+    }
+
+    const dir = path.join(config.dataRoot, normalized);
+    if (!fs.existsSync(dir)) {
+        return response.status(400).json({
+            ok: false,
+            message: `服务器上不存在 data/${normalized} 目录，请确认这是正确的 SillyTavern handle。`,
+        });
+    }
+
+    const oldHandle = request.user?.stHandle || null;
+    request.session.stHandle = normalized;
+
+    try {
+        const operationId = crypto.randomUUID();
+        writeOperationLog({
+            operationId,
+            type: 'handle-change',
+            linuxdo: request.session.linuxdo,
+            stHandle: normalized,
+            ip: request._clientIp,
+            userAgent: request._userAgent,
+            details: {
+                from: oldHandle,
+                to: normalized,
+                rawHandle,
+            },
+        });
+    } catch {
+        // logging failure should not block handle change
+    }
+
+    return response.json({
+        ok: true,
+        stHandle: normalized,
+        path: dir,
+    });
 });
 
 export async function handleOAuthCallback(request, response) {
@@ -100,12 +152,30 @@ export async function handleOAuthCallback(request, response) {
         };
         request.session.stHandle = stHandle;
 
+        try {
+            const operationId = crypto.randomUUID();
+            writeOperationLog({
+                operationId,
+                type: 'login',
+                linuxdo: request.session.linuxdo,
+                stHandle,
+                ip: request._clientIp,
+                userAgent: request._userAgent,
+                result: 'success',
+                reason: null,
+            });
+        } catch {
+            // ignore logging failure
+        }
+
         const redirectTarget = request.session.returnTo || '/';
         delete request.session.returnTo;
 
         return response.redirect(redirectTarget);
     } catch (error) {
+        // eslint-disable-next-line no-console
         console.error('LinuxDo OAuth2 callback failed:', error);
         return response.status(500).send('OAuth2 login failed');
     }
 }
+

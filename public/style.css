@@ -66,3 +66,17 @@ label {
     font-size: 0.875rem;
     color: #9ca3af;
 }
+
+.user-row {
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid #1f2937;
+    cursor: pointer;
+}
+
+.user-row:hover {
+    background: #111827;
+}
+
+.user-row-selected {
+    background: #1d4ed8;
+}

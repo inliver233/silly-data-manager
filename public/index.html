@@ -29,13 +29,23 @@
         <div id="user-section" style="display:none;">
             <h2>当前用户</h2>
             <p><strong>LinuxDo 用户名：</strong> <span id="linuxdo-username"></span></p>
-            <p><strong>SillyTavern handle：</strong> <span id="st-handle"></span></p>
-            <p class="hint">说明：handle 由 LinuxDo 用户名通过 normalizeHandle 规则生成，需与 SillyTavern 中已存在的用户目录同名。</p>
+            <p><strong>当前使用的 SillyTavern handle：</strong> <span id="st-handle"></span></p>
+            <p class="hint">默认 handle 由 LinuxDo 用户名通过 normalizeHandle 规则生成，也可以手动指定。</p>
+            <div class="field">
+                <label for="handle-input">想要操作的 SillyTavern handle：</label>
+                <input type="text" id="handle-input">
+                <button id="handle-apply-button">使用此 handle</button>
+            </div>
+            <p class="hint">系统会根据你输入的名称/昵称自动规范化，并检查服务器上是否存在 data/{handle} 目录。</p>
         </div>
 
         <div id="status-section" style="display:none;">
             <h2>当前数据状态（DATA_ROOT/{handle}）</h2>
-            <pre id="status-json"></pre>
+            <div id="status-summary"></div>
+            <details>
+                <summary>查看原始技术数据（JSON）</summary>
+                <pre id="status-json"></pre>
+            </details>
         </div>
 
         <div id="upload-section" style="display:none;">
