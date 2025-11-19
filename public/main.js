@@ -26,7 +26,7 @@ async function apiPost(path, body) {
     try {
         json = text ? JSON.parse(text) : null;
     } catch {
-        // 返回不是 JSON 时保留原始文本
+        // 返回不是 JSON 时，保留原始文本
     }
 
     if (!response.ok) {
@@ -54,18 +54,10 @@ function uploadWithProgress(formData, simulate) {
     const progressText = document.getElementById('upload-progress-text');
     const errorEl = document.getElementById('upload-error');
 
-    if (logEl) {
-        logEl.textContent = '';
-    }
-    if (progressBar) {
-        progressBar.style.width = '0%';
-    }
-    if (progressText) {
-        progressText.textContent = '';
-    }
-    if (errorEl) {
-        errorEl.textContent = '';
-    }
+    if (logEl) logEl.textContent = '';
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressText) progressText.textContent = '';
+    if (errorEl) errorEl.textContent = '';
 
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -73,9 +65,7 @@ function uploadWithProgress(formData, simulate) {
         xhr.withCredentials = true;
 
         xhr.upload.onprogress = event => {
-            if (!event.lengthComputable) {
-                return;
-            }
+            if (!event.lengthComputable) return;
             const percent = Math.round((event.loaded / event.total) * 100);
             const loadedMb = (event.loaded / (1024 * 1024)).toFixed(2);
             const totalMb = (event.total / (1024 * 1024)).toFixed(2);
@@ -91,9 +81,7 @@ function uploadWithProgress(formData, simulate) {
         };
 
         xhr.onreadystatechange = () => {
-            if (xhr.readyState !== 4) {
-                return;
-            }
+            if (xhr.readyState !== 4) return;
 
             const status = xhr.status;
             const text = xhr.responseText || '';
@@ -126,9 +114,7 @@ function uploadWithProgress(formData, simulate) {
 }
 
 function formatDate(isoString) {
-    if (!isoString) {
-        return '-';
-    }
+    if (!isoString) return '-';
     try {
         return new Date(isoString).toLocaleString();
     } catch {
@@ -151,7 +137,7 @@ async function refreshBackups(status) {
         return;
     }
 
-    if (!status.exists) {
+    if (!status || !status.exists) {
         backupsList.textContent = '当前 Handle 在 DATA_ROOT 下不存在对应的数据目录，暂无可用备份。';
         return;
     }
@@ -234,8 +220,9 @@ async function refreshAuthAndStatus() {
         if (stHandleEl) {
             stHandleEl.textContent = auth.stHandle || '';
         }
-        if (handleInput && !handleInput.value) {
-            handleInput.value = auth.stHandle || '';
+        // 初始状态不自动填充 Handle 输入框，保持为空，让用户自己输入
+        if (handleInput && document.activeElement !== handleInput && !handleInput.value) {
+            handleInput.value = '';
         }
 
         if (!handleVerified) {
@@ -243,23 +230,15 @@ async function refreshAuthAndStatus() {
             if (handleWarningEl) {
                 handleWarningEl.textContent = '当前 Handle 未验证：上传 / 回滚 按钮已锁定，请先完成 SillyTavern Handle + 密码验证。';
             }
-            if (uploadButton) {
-                uploadButton.disabled = true;
-            }
-            if (rollbackButton) {
-                rollbackButton.disabled = true;
-            }
+            if (uploadButton) uploadButton.disabled = true;
+            if (rollbackButton) rollbackButton.disabled = true;
         } else {
             authStatusEl.textContent = '已使用 LinuxDo 账号登录，当前 Handle 已通过 SillyTavern 密码验证，可以安全执行上传和回滚。';
             if (handleWarningEl) {
                 handleWarningEl.textContent = '';
             }
-            if (uploadButton) {
-                uploadButton.disabled = false;
-            }
-            if (rollbackButton) {
-                rollbackButton.disabled = false;
-            }
+            if (uploadButton) uploadButton.disabled = false;
+            if (rollbackButton) rollbackButton.disabled = false;
         }
 
         const status = await apiGet('/api/data/status');
@@ -385,12 +364,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         uploadButton.disabled = true;
-        if (fileInput) {
-            fileInput.disabled = true;
-        }
-        if (rollbackButton) {
-            rollbackButton.disabled = true;
-        }
+        if (fileInput) fileInput.disabled = true;
+        if (rollbackButton) rollbackButton.disabled = true;
 
         try {
             const { json } = await uploadWithProgress(formData, simulate);
@@ -425,12 +400,8 @@ window.addEventListener('DOMContentLoaded', () => {
             appendLog(resultEl, `上传失败：${error.message}`);
         } finally {
             uploadButton.disabled = false;
-            if (fileInput) {
-                fileInput.disabled = false;
-            }
-            if (rollbackButton) {
-                rollbackButton.disabled = false;
-            }
+            if (fileInput) fileInput.disabled = false;
+            if (rollbackButton) rollbackButton.disabled = false;
         }
     });
 
@@ -455,6 +426,7 @@ window.addEventListener('DOMContentLoaded', () => {
             const rawHandle = handleInput.value.trim();
             const password = handlePasswordInput.value;
             const resultEl = document.getElementById('upload-result');
+            const handleWarningEl = document.getElementById('handle-verify-warning');
 
             if (!rawHandle) {
                 if (resultEl) {
@@ -472,17 +444,29 @@ window.addEventListener('DOMContentLoaded', () => {
 
             try {
                 const result = await apiPost('/api/auth/handle', { rawHandle, password });
-                document.getElementById('st-handle').textContent = result.stHandle;
+                const stHandleEl = document.getElementById('st-handle');
+                if (stHandleEl) {
+                    stHandleEl.textContent = result.stHandle;
+                }
                 handleInput.value = result.stHandle;
                 handlePasswordInput.value = '';
                 if (resultEl) {
-                    resultEl.textContent = `已切换 Handle：${result.stHandle}\n目录路径：${result.path}`;
+                    resultEl.textContent = `Handle 验证成功，已切换到：${result.stHandle}\n目录路径：${result.path}`;
+                }
+                if (handleWarningEl) {
+                    handleWarningEl.textContent = '';
                 }
                 await refreshAuthAndStatus();
             } catch (error) {
+                // 失败时清空密码，更新顶部状态和警告
+                handlePasswordInput.value = '';
                 if (resultEl) {
-                    resultEl.textContent = `切换 Handle 失败：${error.message}`;
+                    resultEl.textContent = `Handle 验证失败：${error.message}`;
                 }
+                if (handleWarningEl) {
+                    handleWarningEl.textContent = `Handle 验证失败：${error.message}`;
+                }
+                await refreshAuthAndStatus();
             }
         });
     }
