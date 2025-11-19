@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Data Upload Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>Data Upload Admin</h1>
+
+        <div id="admin-login-section">
+            <h2>Admin Login</h2>
+            <label>
+                Username:
+                <input type="text" id="admin-username">
+            </label>
+            <label>
+                Password:
+                <input type="password" id="admin-password">
+            </label>
+            <button id="admin-login-button">Login</button>
+            <pre id="admin-login-message"></pre>
+        </div>
+
+        <div id="admin-panel" style="display:none;">
+            <button id="admin-logout-button">Logout</button>
+
+            <h2>Logs</h2>
+            <label>
+                Handle filter:
+                <input type="text" id="filter-handle">
+            </label>
+            <label>
+                Type:
+                <select id="filter-type">
+                    <option value="">All</option>
+                    <option value="upload">Upload</option>
+                    <option value="rollback">Rollback</option>
+                </select>
+            </label>
+            <label>
+                Limit:
+                <input type="number" id="filter-limit" value="100">
+            </label>
+            <button id="load-logs-button">Load Logs</button>
+
+            <pre id="logs-output"></pre>
+        </div>
+    </div>
+
+    <script src="/admin.js"></script>
+</body>
+</html>
+
