@@ -323,9 +323,25 @@ function checkForUnsafeFiles(sourceUserRoot) {
 
     for (const file of files) {
         const ext = path.extname(file.path).toLowerCase();
-        if (UNSAFE_EXTENSIONS.includes(ext)) {
-            unsafe.push(file.path);
+        if (!UNSAFE_EXTENSIONS.includes(ext)) {
+            // extension not in deny list
+            // eslint-disable-next-line no-continue
+            continue;
         }
+
+        // allow some web assets inside the extensions/ directory
+        const relativePath = path.relative(sourceUserRoot, file.path);
+        const topLevelSegment = relativePath.split(path.sep)[0] || '';
+
+        if (topLevelSegment === 'extensions') {
+            if (ext === '.js' || ext === '.html' || ext === '.htm') {
+                // these are allowed inside extensions/
+                // eslint-disable-next-line no-continue
+                continue;
+            }
+        }
+
+        unsafe.push(file.path);
     }
 
     return unsafe;
