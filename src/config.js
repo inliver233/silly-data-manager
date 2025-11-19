@@ -14,6 +14,15 @@ function resolveDataRoot() {
     return path.resolve(process.cwd(), 'data');
 }
 
+function resolveTempRoot() {
+    const raw = process.env.DMSYSTEM_TEMP_ROOT || process.env.TEMP_ROOT;
+    if (raw && raw.trim().length > 0) {
+        return path.resolve(process.cwd(), raw.trim());
+    }
+
+    return path.resolve(process.cwd(), 'temp');
+}
+
 const linuxDoClientId = process.env.LINUXDO_CLIENT_ID || process.env.CLIENT_ID || '';
 const linuxDoClientSecret = process.env.LINUXDO_CLIENT_SECRET || process.env.CLIENT_SECRET || '';
 const linuxDoRedirectUri = process.env.LINUXDO_REDIRECT_URI || process.env.REDIRECT_URI || '';
@@ -21,6 +30,7 @@ const linuxDoRedirectUri = process.env.LINUXDO_REDIRECT_URI || process.env.REDIR
 const config = {
     port: Number.parseInt(process.env.PORT || '23669', 10),
     dataRoot: resolveDataRoot(),
+    tempRoot: resolveTempRoot(),
     isProduction: process.env.NODE_ENV === 'production',
     sessionSecret: process.env.SESSION_SECRET || 'please-change-me',
     linuxDo: {
@@ -38,4 +48,3 @@ const config = {
 };
 
 export default config;
-

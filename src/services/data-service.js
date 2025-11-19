@@ -16,18 +16,29 @@ function getUserRoot(handle) {
     return path.join(config.dataRoot, handle);
 }
 
-function getUserBackupsDir(handle) {
-    return path.join(getUserRoot(handle), 'backups');
+function getUserTempRoot(linuxdoUser) {
+    const key = linuxdoUser?.username || String(linuxdoUser?.id || 'unknown');
+    const root = path.join(config.tempRoot, key);
+    ensureDirectorySync(root);
+    return root;
 }
 
-function getUploadTempDir(linuxdoId) {
-    const base = path.join(config.dataRoot, '_upload_temp', String(linuxdoId));
+function getUserBackupsDir(handle, linuxdoUser) {
+    const userRoot = getUserTempRoot(linuxdoUser);
+    const backupsRoot = path.join(userRoot, 'backups', handle);
+    ensureDirectorySync(backupsRoot);
+    return backupsRoot;
+}
+
+function getUploadTempDir(linuxdoUser) {
+    const userRoot = getUserTempRoot(linuxdoUser);
+    const base = path.join(userRoot, 'extract');
     ensureDirectorySync(base);
     return base;
 }
 
-export function getUploadBackups(handle, maxAgeMs = 24 * 60 * 60 * 1000) {
-    const backupsDir = getUserBackupsDir(handle);
+export function getUploadBackups(handle, linuxdoUser, maxAgeMs = 24 * 60 * 60 * 1000) {
+    const backupsDir = getUserBackupsDir(handle, linuxdoUser);
     if (!fs.existsSync(backupsDir)) {
         return [];
     }
@@ -371,7 +382,7 @@ export async function processUpload(request, handle) {
     const timestamp = new Date().toISOString();
     const operationId = crypto.randomUUID();
 
-    const tempBase = getUploadTempDir(linuxdoUser.id);
+    const tempBase = getUploadTempDir(linuxdoUser);
     const extractRoot = path.join(tempBase, `${Date.now()}_extracted`);
 
     let structure;
@@ -457,8 +468,7 @@ export async function processUpload(request, handle) {
             throw error;
         }
 
-        const backupsDir = getUserBackupsDir(handle);
-        ensureDirectorySync(backupsDir);
+        const backupsDir = getUserBackupsDir(handle, linuxdoUser);
 
         const backupTimestamp = timestamp.replace(/[:.]/g, '-');
         const backupZipPath = path.join(backupsDir, `upload_${backupTimestamp}.zip`);

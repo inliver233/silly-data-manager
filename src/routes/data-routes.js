@@ -15,12 +15,15 @@ dataRouter.get('/status', requireLogin, (request, response) => {
     return response.json(status);
 });
 
-const uploadsRoot = path.join(config.dataRoot, '_upload_temp_files');
-ensureDirectorySync(uploadsRoot);
-
 const upload = multer({
     storage: multer.diskStorage({
-        destination: (_req, _file, cb) => cb(null, uploadsRoot),
+        destination: (req, _file, cb) => {
+            const linuxdoUser = req.user?.linuxdo || {};
+            const key = linuxdoUser.username || String(linuxdoUser.id || 'unknown');
+            const dir = path.join(config.tempRoot, 'uploads', key);
+            ensureDirectorySync(dir);
+            cb(null, dir);
+        },
         filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
     }),
     limits: {
@@ -85,7 +88,7 @@ dataRouter.post('/rollback', requireLogin, async (request, response) => {
 
 dataRouter.get('/backups', requireLogin, (request, response) => {
     const handle = request.user.stHandle;
-    const backups = getUploadBackups(handle);
+    const backups = getUploadBackups(handle, request.user.linuxdo);
     return response.json({
         ok: true,
         backups,
