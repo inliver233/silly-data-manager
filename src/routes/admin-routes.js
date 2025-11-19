@@ -124,7 +124,7 @@ adminRouter.get('/users', requireAdminWithCsrf, (request, response) => {
 
             const linuxdo = record.linuxdo || {};
             const stHandle = record.stHandle || null;
-            const key = `${linuxdo.id || 'unknown'}|${stHandle || ''}`;
+            const key = linuxdo.id != null ? String(linuxdo.id) : (linuxdo.username || 'unknown');
 
             if (!usersMap[key]) {
                 usersMap[key] = {

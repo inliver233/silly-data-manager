@@ -86,6 +86,55 @@ export function getUploadBackups(handle, linuxdoUser, maxAgeMs = 24 * 60 * 60 * 
     return backups;
 }
 
+export function getBackupFileForHandle(handle, linuxdoUser, backupName) {
+    if (!backupName || typeof backupName !== 'string') {
+        return null;
+    }
+
+    if (backupName.includes('/') || backupName.includes('\\')) {
+        return null;
+    }
+
+    if (!backupName.startsWith('upload_') || !backupName.endsWith('.zip')) {
+        return null;
+    }
+
+    const backupsDir = getUserBackupsDir(handle, linuxdoUser);
+    const fullPath = path.join(backupsDir, backupName);
+
+    if (!fs.existsSync(fullPath)) {
+        return null;
+    }
+
+    let stat;
+    try {
+        stat = fs.statSync(fullPath);
+    } catch {
+        return null;
+    }
+
+    return {
+        name: backupName,
+        path: fullPath,
+        size: stat.size,
+        mtime: stat.mtime.toISOString(),
+    };
+}
+
+export function deleteBackupFileForHandle(handle, linuxdoUser, backupName) {
+    const info = getBackupFileForHandle(handle, linuxdoUser, backupName);
+    if (!info) {
+        return false;
+    }
+
+    try {
+        fs.unlinkSync(info.path);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function getUserDataStatus(handle) {
     if (!handle) {
         return {

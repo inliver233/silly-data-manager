@@ -86,3 +86,49 @@ label {
 .user-row-selected {
     background: #1d4ed8;
 }
+
+#upload-progress-container {
+    width: 100%;
+    height: 8px;
+    background: #1f2937;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 0.25rem;
+}
+
+#upload-progress-bar {
+    width: 0;
+    height: 100%;
+    background: #22c55e;
+    transition: width 0.2s ease-out;
+}
+
+#upload-progress-text {
+    margin-top: 0.25rem;
+}
+
+.error-text {
+    margin-top: 0.25rem;
+    color: #f97373;
+}
+
+#backups-list {
+    margin-top: 0.5rem;
+}
+
+.backup-row {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #1f2937;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.backup-row-current {
+    color: #a5b4fc;
+}
+
+.backup-row-buttons button {
+    margin-top: 0;
+}

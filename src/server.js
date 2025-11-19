@@ -45,6 +45,34 @@ app.use('/admin/api', adminRouter);
 
 app.get('/oauth', handleOAuthCallback);
 
+app.use((error, request, response, next) => {
+    const isApiRequest = request.path.startsWith('/api/') || request.path.startsWith('/admin/api');
+
+    if (!isApiRequest) {
+        return next(error);
+    }
+
+    // eslint-disable-next-line no-console
+    console.error('API error:', error);
+
+    let statusCode = error.statusCode || error.status || 500;
+    let message = error.message || 'Internal server error';
+
+    if (error.name === 'MulterError') {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+            statusCode = 413;
+            message = 'Uploaded file is too large (over 100MB limit)';
+        } else {
+            statusCode = 400;
+        }
+    }
+
+    return response.status(statusCode).json({
+        ok: false,
+        message,
+    });
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const staticRoot = path.join(__dirname, '..', 'public');
@@ -60,4 +88,3 @@ app.listen(port, () => {
     // eslint-disable-next-line no-console
     console.log(`Data upload service listening on port ${port}, DATA_ROOT=${config.dataRoot}`);
 });
-

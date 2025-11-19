@@ -4,7 +4,14 @@ import path from 'node:path';
 
 import config from '../config.js';
 import { requireLogin } from '../middleware/auth.js';
-import { getUserDataStatus, getUploadBackups, processUpload, rollbackLastUpload } from '../services/data-service.js';
+import {
+    deleteBackupFileForHandle,
+    getBackupFileForHandle,
+    getUserDataStatus,
+    getUploadBackups,
+    processUpload,
+    rollbackLastUpload,
+} from '../services/data-service.js';
 import { ensureDirectorySync } from '../utils/fs-utils.js';
 
 export const dataRouter = express.Router();
@@ -89,6 +96,42 @@ dataRouter.post('/rollback', requireLogin, async (request, response) => {
 dataRouter.get('/backups', requireLogin, (request, response) => {
     const handle = request.user.stHandle;
     const backups = getUploadBackups(handle, request.user.linuxdo);
+    return response.json({
+        ok: true,
+        backups,
+    });
+});
+
+dataRouter.get('/backups/:name', requireLogin, (request, response) => {
+    const handle = request.user.stHandle;
+    const linuxdoUser = request.user.linuxdo;
+    const name = request.params.name;
+
+    const backup = getBackupFileForHandle(handle, linuxdoUser, name);
+    if (!backup) {
+        return response.status(404).json({
+            ok: false,
+            message: 'Backup not found',
+        });
+    }
+
+    return response.download(backup.path, backup.name);
+});
+
+dataRouter.delete('/backups/:name', requireLogin, (request, response) => {
+    const handle = request.user.stHandle;
+    const linuxdoUser = request.user.linuxdo;
+    const name = request.params.name;
+
+    const deleted = deleteBackupFileForHandle(handle, linuxdoUser, name);
+    if (!deleted) {
+        return response.status(404).json({
+            ok: false,
+            message: 'Backup not found',
+        });
+    }
+
+    const backups = getUploadBackups(handle, linuxdoUser);
     return response.json({
         ok: true,
         backups,

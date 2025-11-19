@@ -17,11 +17,179 @@ async function apiPost(path, body) {
         credentials: 'include',
         body: body ? JSON.stringify(body) : '{}',
     });
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Request failed: ${response.status} ${text}`);
+
+    const text = await response.text();
+    let json = null;
+    try {
+        json = text ? JSON.parse(text) : null;
+    } catch {
+        // best-effort parse; fall through
     }
-    return response.json();
+
+    if (!response.ok) {
+        const message = (json && json.message) ? json.message : (text || `Request failed: ${response.status}`);
+        throw new Error(message);
+    }
+
+    return json || {};
+}
+
+function appendLog(element, line) {
+    if (!element) {
+        return;
+    }
+    if (!element.textContent) {
+        element.textContent = line;
+    } else {
+        element.textContent += `\n${line}`;
+    }
+}
+
+function uploadWithProgress(formData, simulate) {
+    const logEl = document.getElementById('upload-result');
+    const progressBar = document.getElementById('upload-progress-bar');
+    const progressText = document.getElementById('upload-progress-text');
+    const errorEl = document.getElementById('upload-error');
+
+    if (logEl) {
+        logEl.textContent = '';
+    }
+    if (progressBar) {
+        progressBar.style.width = '0%';
+    }
+    if (progressText) {
+        progressText.textContent = '';
+    }
+    if (errorEl) {
+        errorEl.textContent = '';
+    }
+
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/data/upload', true);
+        xhr.withCredentials = true;
+
+        xhr.upload.onprogress = event => {
+            if (!event.lengthComputable) {
+                return;
+            }
+            const percent = Math.round((event.loaded / event.total) * 100);
+            const loadedMb = (event.loaded / (1024 * 1024)).toFixed(2);
+            const totalMb = (event.total / (1024 * 1024)).toFixed(2);
+
+            if (progressBar) {
+                progressBar.style.width = `${percent}%`;
+            }
+            if (progressText) {
+                progressText.textContent = `�ϴ����ȣ�${percent}%��${loadedMb} MB / ${totalMb} MB��`;
+            }
+            appendLog(logEl, `�ϴ����ȣ�${percent}%��${loadedMb} MB / ${totalMb} MB��`);
+        };
+
+        xhr.onreadystatechange = () => {
+            if (xhr.readyState !== 4) {
+                return;
+            }
+
+            const status = xhr.status;
+            const text = xhr.responseText || '';
+            let json;
+            try {
+                json = text ? JSON.parse(text) : null;
+            } catch {
+                appendLog(logEl, `��������Ӧ���� JSON��״̬ ${status}����`);
+                appendLog(logEl, text.trim());
+                if (errorEl) {
+                    errorEl.textContent = '���������ص� HTML ��Ӧ�����ܿ��� Nginx/���ؽ�ֹ���󣬱��������������� client_max_body_size ��ʱ�������á�';
+                }
+                reject(new Error('���������ص����ݲ�����Ч�� JSON'));
+                return;
+            }
+
+            resolve({ status, json, rawText: text });
+        };
+
+        xhr.onerror = () => {
+            if (errorEl) {
+                errorEl.textContent = '����������������ɴأ��볢���Ժ����ԡ�';
+            }
+            reject(new Error('����������������ɴ�'));
+        };
+
+        xhr.send(formData);
+    });
+}
+
+function getBackupNameFromPath(path) {
+    if (!path || typeof path !== 'string') {
+        return null;
+    }
+    const parts = path.split(/[\\/]/);
+    if (!parts.length) {
+        return null;
+    }
+    return parts[parts.length - 1] || null;
+}
+
+async function refreshBackups(status) {
+    const backupsSection = document.getElementById('backups-section');
+    const backupsList = document.getElementById('backups-list');
+
+    if (!backupsSection || !backupsList) {
+        return;
+    }
+
+    if (!status.exists) {
+        backupsList.textContent = '��ǰ handle �䲻�����ݿ⣬��û���κι���ϵͳ���ɵ��Զ����ݡ�';
+        return;
+    }
+
+    backupsList.textContent = '���ڼ������б���';
+
+    try {
+        const data = await apiGet('/api/data/backups');
+        const backups = data.backups || [];
+
+        if (!backups.length) {
+            backupsList.textContent = '��� 24 Сʱ����û�в鿴�� upload_*.zip �Զ����ݡ�';
+            return;
+        }
+
+        const rollback = status.rollback || null;
+        const lastUpload = status.lastUpload || null;
+        const currentPath = (rollback && rollback.backupPath) || (lastUpload && lastUpload.backupZipPath) || null;
+        const currentName = getBackupNameFromPath(currentPath);
+
+        const rows = backups.map(backup => {
+            const timeText = (() => {
+                try {
+                    return new Date(backup.mtime).toLocaleString();
+                } catch {
+                    return backup.mtime;
+                }
+            })();
+
+            const sizeMb = backup.size ? (backup.size / (1024 * 1024)).toFixed(2) : '0.00';
+            const isCurrent = currentName && backup.name === currentName;
+
+            const label = isCurrent ? `${backup.name}��ǰ�ع㱸�ݵ㣩` : backup.name;
+
+            return `<div class=\"backup-row${isCurrent ? ' backup-row-current' : ''}\">
+    <div>
+        <div>${label}</div>
+        <div class=\"hint\">${timeText} · ${sizeMb} MB</div>
+    </div>
+    <div class=\"backup-row-buttons\">
+        <button type=\"button\" data-action=\"download\" data-name=\"${backup.name}\">���</button>
+        <button type=\"button\" data-action=\"delete\" data-name=\"${backup.name}\">ɾ��</button>
+    </div>
+</div>`;
+        });
+
+        backupsList.innerHTML = rows.join('\n');
+    } catch (error) {
+        backupsList.textContent = `�������б�ʧ�ܣ�${error.message}`;
+    }
 }
 
 async function refreshAuthAndStatus() {
@@ -36,7 +204,7 @@ async function refreshAuthAndStatus() {
     try {
         const auth = await apiGet('/api/auth/me');
         if (!auth.authenticated) {
-            authStatusEl.textContent = '未登录，请先使用 LinuxDo 账号登录。';
+            authStatusEl.textContent = 'δ��¼������ʹ�� LinuxDo �˺ŵ�¼��';
             loginButton.style.display = 'inline-block';
             logoutButton.style.display = 'none';
             userSection.style.display = 'none';
@@ -46,7 +214,7 @@ async function refreshAuthAndStatus() {
             return;
         }
 
-        authStatusEl.textContent = '已通过 LinuxDo 登录。';
+        authStatusEl.textContent = '��ͨ�� LinuxDo ��¼��';
         loginButton.style.display = 'none';
         logoutButton.style.display = 'inline-block';
         userSection.style.display = 'block';
@@ -68,48 +236,48 @@ async function refreshAuthAndStatus() {
         const rollbackButton = document.getElementById('rollback-button');
         if (summaryEl) {
             if (!status.exists) {
-                summaryEl.textContent = '服务器上还没有该 handle 对应的数据目录。';
+                summaryEl.textContent = '�������ϻ�û�и� handle ��Ӧ������Ŀ¼��';
                 if (rollbackButton) {
                     rollbackButton.disabled = true;
                 }
             } else {
                 const lines = [];
                 const sizeMb = status.size ? (status.size / (1024 * 1024)).toFixed(2) : '0.00';
-                lines.push(`数据目录：${status.path}`);
-                lines.push('是否存在：是');
-                lines.push(`数据大小：${sizeMb} MB`);
+                lines.push(`����Ŀ¼��${status.path}`);
+                lines.push('�Ƿ���ڣ���');
+                lines.push(`���ݴ�С��${sizeMb} MB`);
                 if (status.mtime) {
                     try {
                         const local = new Date(status.mtime).toLocaleString();
-                        lines.push(`最后修改时间：${local}`);
+                        lines.push(`����޸�ʱ�䣺${local}`);
                     } catch {
-                        lines.push(`最后修改时间：${status.mtime}`);
+                        lines.push(`����޸�ʱ�䣺${status.mtime}`);
                     }
                 }
                 const keys = status.keyFiles || {};
                 const keyParts = [];
-                keyParts.push(`settings.json（${keys.settingsJson ? '存在' : '缺失'}）`);
-                keyParts.push(`secrets.json（${keys.secretsJson ? '存在' : '缺失'}）`);
-                keyParts.push(`stats.json（${keys.statsJson ? '存在' : '缺失'}）`);
-                keyParts.push(`content.log（${keys.contentLog ? '存在' : '缺失'}）`);
-                lines.push(`关键文件：${keyParts.join('，')}`);
+                keyParts.push(`settings.json��${keys.settingsJson ? '����' : 'ȱʧ'}��`);
+                keyParts.push(`secrets.json��${keys.secretsJson ? '����' : 'ȱʧ'}��`);
+                keyParts.push(`stats.json��${keys.statsJson ? '����' : 'ȱʧ'}��`);
+                keyParts.push(`content.log��${keys.contentLog ? '����' : 'ȱʧ'}��`);
+                lines.push(`�ؼ��ļ���${keyParts.join('��')}`);
 
                 const rb = status.rollback || null;
                 if (rb && rb.canRollback) {
-                    lines.push('回滚状态：可用（将回到最近一次通过本系统上传前的状态）。');
+                    lines.push('�ع�״̬�����ã����ص����һ��ͨ����ϵͳ�ϴ�ǰ��״̬����');
                     if (rb.backupMtime) {
                         try {
                             const bLocal = new Date(rb.backupMtime).toLocaleString();
-                            lines.push(`备份创建时间：${bLocal}`);
+                            lines.push(`���ݴ���ʱ�䣺${bLocal}`);
                         } catch {
-                            lines.push(`备份创建时间：${rb.backupMtime}`);
+                            lines.push(`���ݴ���ʱ�䣺${rb.backupMtime}`);
                         }
                     }
                     if (rollbackButton) {
                         rollbackButton.disabled = false;
                     }
                 } else {
-                    lines.push('回滚状态：当前没有可用的自动备份（尚未通过本系统进行成功上传）。');
+                    lines.push('�ع�״̬����ǰû�п��õ��Զ����ݣ���δͨ����ϵͳ���гɹ��ϴ�����');
                     if (rollbackButton) {
                         rollbackButton.disabled = true;
                     }
@@ -118,8 +286,10 @@ async function refreshAuthAndStatus() {
                 summaryEl.textContent = lines.join('\n');
             }
         }
+
+        await refreshBackups(status);
     } catch (error) {
-        authStatusEl.textContent = `加载状态失败：${error.message}`;
+        authStatusEl.textContent = `����״̬ʧ�ܣ�${error.message}`;
     }
 }
 
@@ -131,6 +301,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const handleApplyButton = document.getElementById('handle-apply-button');
     const handleInput = document.getElementById('handle-input');
+
+    const backupsList = document.getElementById('backups-list');
 
     loginButton.addEventListener('click', () => {
         const returnTo = window.location.pathname || '/';
@@ -149,15 +321,17 @@ window.addEventListener('DOMContentLoaded', () => {
     uploadButton.addEventListener('click', async () => {
         const fileInput = document.getElementById('data-file');
         const resultEl = document.getElementById('upload-result');
+        const progressText = document.getElementById('upload-progress-text');
+        const errorEl = document.getElementById('upload-error');
 
-        const file = fileInput.files && fileInput.files[0];
+        const file = fileInput && fileInput.files && fileInput.files[0];
         if (!file) {
-            resultEl.textContent = '请先选择一个 data.zip 文件。';
+            resultEl.textContent = '����ѡ��һ�� data.zip �ļ���';
             return;
         }
 
         if (file.size > 100 * 1024 * 1024) {
-            resultEl.textContent = '文件大于 100MB，将被服务器拒绝。';
+            resultEl.textContent = '�ļ����� 100MB�������������ܾ���';
             return;
         }
 
@@ -178,53 +352,75 @@ window.addEventListener('DOMContentLoaded', () => {
         formData.append('overwriteStats', overwriteStats ? 'true' : 'false');
         formData.append('overwriteContentLog', overwriteContentLog ? 'true' : 'false');
 
-        resultEl.textContent = simulate
-            ? '步骤 1/2：正在上传文件并在服务器中解压（模拟模式，不会修改服务器数据）…'
-            : '步骤 1/3：正在上传文件并在服务器中解压…';
+        if (progressText) {
+            progressText.textContent = simulate
+                ? '���� 1/2�������ϴ��ļ����ڷ������н�ѹ��ģ��ģʽ�������޸ķ��������ݣ���'
+                : '���� 1/3�������ϴ��ļ����ڷ������н�ѹ��';
+        }
+        if (errorEl) {
+            errorEl.textContent = '';
+        }
+
+        uploadButton.disabled = true;
+        if (fileInput) {
+            fileInput.disabled = true;
+        }
+        if (rollbackButton) {
+            rollbackButton.disabled = true;
+        }
 
         try {
-            const response = await fetch('/api/data/upload', {
-                method: 'POST',
-                credentials: 'include',
-                body: formData,
-            });
-            const json = await response.json();
-            if (!response.ok || !json.ok) {
-                resultEl.textContent = `上传失败：${json.message || response.status}\n服务器返回：\n${JSON.stringify(json, null, 2)}`;
-            } else {
-                if (json.result && json.result.simulation) {
-                    resultEl.textContent =
-                        '步骤 2/2：服务器已完成解压和安全检查（模拟模式）。\n' +
-                        '如果没有危险文件且结构正确，可以切换到“真实写入”模式再次上传。\n\n' +
-                        JSON.stringify(json.result, null, 2);
-                } else {
-                    resultEl.textContent =
-                        '步骤 2/3：服务器已完成解压和安全检查。\n' +
-                        '步骤 3/3：已完成备份旧数据并合并新数据。\n\n' +
-                        '详细结果：\n' +
-                        JSON.stringify(json.result, null, 2);
-                    await refreshAuthAndStatus();
+            const { status, json } = await uploadWithProgress(formData, simulate);
+
+            if (!json || json.ok === false) {
+                appendLog(resultEl, `�ϴ�ʧ�ܣ�${(json && json.message) || status}`);
+                if (json) {
+                    appendLog(resultEl, '���������أ�');
+                    appendLog(resultEl, JSON.stringify(json, null, 2));
                 }
+                if (errorEl) {
+                    errorEl.textContent = '�ϴ�ʧ�ܣ��鿴������־�еľ�����Ϣ��';
+                }
+            } else if (json.result && json.result.simulation) {
+                if (progressText) {
+                    progressText.textContent = '���� 2/2������������ɽ�ѹ�Ͱ�ȫ��飨ģ��ģʽ����';
+                }
+                appendLog(resultEl, 'ģ�����£�');
+                appendLog(resultEl, JSON.stringify(json.result, null, 2));
+            } else {
+                if (progressText) {
+                    progressText.textContent = '���� 2/3������������ɽ�ѹ�Ͱ�ȫ��顣\n���� 3/3������ɱ��ݾ����ݲ��ϲ������ݡ�';
+                }
+                appendLog(resultEl, '��ϸ�����');
+                appendLog(resultEl, JSON.stringify(json.result, null, 2));
+                await refreshAuthAndStatus();
             }
         } catch (error) {
-            resultEl.textContent = `上传过程中出错：${error.message}`;
+            appendLog(resultEl, `�ϴ������г�����${error.message}`);
+        } finally {
+            uploadButton.disabled = false;
+            if (fileInput) {
+                fileInput.disabled = false;
+            }
+            if (rollbackButton) {
+                rollbackButton.disabled = false;
+            }
         }
     });
 
     rollbackButton.addEventListener('click', async () => {
         const resultEl = document.getElementById('rollback-result');
-        resultEl.textContent = '正在请求回滚，请稍候…';
+        resultEl.textContent = '��������ع������Ժ�';
+        rollbackButton.disabled = true;
 
         try {
             const json = await apiPost('/api/data/rollback', {});
-            if (!json.ok) {
-                resultEl.textContent = `回滚失败：${json.message || '未知错误'}`;
-            } else {
-                resultEl.textContent = `回滚成功：\n${JSON.stringify(json.result, null, 2)}`;
-                await refreshAuthAndStatus();
-            }
+            resultEl.textContent = `�ع��ɹ���\n${JSON.stringify(json.result || json, null, 2)}`;
+            await refreshAuthAndStatus();
         } catch (error) {
-            resultEl.textContent = `回滚过程中出错：${error.message}`;
+            resultEl.textContent = `�ع������г�����${error.message}`;
+        } finally {
+            rollbackButton.disabled = false;
         }
     });
 
@@ -235,7 +431,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
             if (!rawHandle) {
                 if (resultEl) {
-                    resultEl.textContent = '请输入想要操作的 SillyTavern handle 或名称。';
+                    resultEl.textContent = '��������Ҫ������ SillyTavern handle �����ơ�';
                 }
                 return;
             }
@@ -245,12 +441,59 @@ window.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('st-handle').textContent = result.stHandle;
                 handleInput.value = result.stHandle;
                 if (resultEl) {
-                    resultEl.textContent = `已切换到 handle：${result.stHandle}\n对应目录：${result.path}`;
+                    resultEl.textContent = `���л��� handle��${result.stHandle}\n��ӦĿ¼��${result.path}`;
                 }
                 await refreshAuthAndStatus();
             } catch (error) {
                 if (resultEl) {
-                    resultEl.textContent = `切换 handle 失败：${error.message}`;
+                    resultEl.textContent = `�л� handle ʧ�ܣ�${error.message}`;
+                }
+            }
+        });
+    }
+
+    if (backupsList) {
+        backupsList.addEventListener('click', async event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            const action = target.getAttribute('data-action');
+            const name = target.getAttribute('data-name');
+            if (!action || !name) {
+                return;
+            }
+
+            if (action === 'download') {
+                window.open(`/api/data/backups/${encodeURIComponent(name)}`, '_blank');
+            } else if (action === 'delete') {
+                // eslint-disable-next-line no-alert
+                const confirmed = window.confirm(`ȷ��Ҫɾ�����ݵ㣿\n${name}`);
+                if (!confirmed) {
+                    return;
+                }
+                const resultEl = document.getElementById('rollback-result');
+                try {
+                    const response = await fetch(`/api/data/backups/${encodeURIComponent(name)}`, {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                    const json = await response.json();
+                    if (!response.ok || json.ok === false) {
+                        throw new Error(json.message || `Request failed: ${response.status}`);
+                    }
+                    if (resultEl) {
+                        resultEl.textContent = `�Ѿ�ɾ�����ݵ㣺${name}`;
+                    }
+                    await refreshAuthAndStatus();
+                } catch (error) {
+                    if (resultEl) {
+                        resultEl.textContent = `ɾ�����ݵ�ʧ�ܣ�${error.message}`;
+                    }
                 }
             }
         });
@@ -258,4 +501,3 @@ window.addEventListener('DOMContentLoaded', () => {
 
     refreshAuthAndStatus();
 });
-

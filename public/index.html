@@ -11,17 +11,17 @@
         <h1>云酒馆数据上传系统</h1>
 
         <section class="box">
-            <h2>使用说明（必读）</h2>
+            <h2>使用说明与约束</h2>
             <ol>
-                <li>本页面只管理 <code>data/{handle}</code> 目录，不会动账号数据库 <code>_storage</code>。</li>
-                <li>第一次建议先用“仅模拟验证”上传，确认结构和安全检查通过后，再执行“真实写入”。</li>
-                <li>每次真实写入前，系统都会自动打包备份，必要时可以点击“回滚”恢复到上传前状态。</li>
-                <li>上传过程中请尽量不要在酒馆内进行大量操作，以减少数据同时写入带来的风险。</li>
+                <li>本页面只会操作 <code>data/{handle}</code> 这个用户目录，不会修改账号信息库 <code>_storage</code> 等全局目录。</li>
+                <li>建议先运行一次“模拟模式”，确认压缩包结构与安全检查无误后，再执行“真实写入”。</li>
+                <li>每次真实写入前系统都会自动备份，可通过“一键回滚”恢复到最近一次上传前的状态。</li>
+                <li>上传期间请避免在主站对同一账号进行大量写操作，以减少数据冲突风险。</li>
             </ol>
         </section>
 
         <div id="auth-section">
-            <p id="auth-status">正在检查登录状态…</p>
+            <p id="auth-status">正在检查登录状态...</p>
             <button id="login-button" style="display:none;">使用 LinuxDo 账号登录</button>
             <button id="logout-button" style="display:none;">退出登录</button>
         </div>
@@ -30,20 +30,20 @@
             <h2>当前用户</h2>
             <p><strong>LinuxDo 用户名：</strong> <span id="linuxdo-username"></span></p>
             <p><strong>当前使用的 SillyTavern handle：</strong> <span id="st-handle"></span></p>
-            <p class="hint">默认 handle 由 LinuxDo 用户名通过 normalizeHandle 规则生成，也可以手动指定。</p>
+            <p class="hint">默认 handle 为 LinuxDo 用户名经 normalizeHandle 处理后的结果，也可以手动指定。</p>
             <div class="field">
                 <label for="handle-input">想要操作的 SillyTavern handle：</label>
                 <input type="text" id="handle-input">
-                <button id="handle-apply-button">使用此 handle</button>
+                <button id="handle-apply-button">使用该 handle</button>
             </div>
-            <p class="hint">系统会根据你输入的名称/昵称自动规范化，并检查服务器上是否存在 data/{handle} 目录。</p>
+            <p class="hint">系统会将昵称/用户名转换为规范 handle，并检查 data/{handle} 目录是否存在。</p>
         </div>
 
         <div id="status-section" style="display:none;">
             <h2>当前数据状态（DATA_ROOT/{handle}）</h2>
             <div id="status-summary"></div>
             <details>
-                <summary>查看原始技术数据（JSON）</summary>
+                <summary>查看原始状态数据（JSON）</summary>
                 <pre id="status-json"></pre>
             </details>
         </div>
@@ -51,8 +51,8 @@
         <div id="upload-section" style="display:none;">
             <h2>上传 data.zip</h2>
             <p>
-                请选择由 SillyTavern 打包导出的 <code>data.zip</code> 文件，单文件不超过 100MB。
-                支持两种常见结构：单个用户目录，或完整 <code>data/</code> 目录（系统会自动只使用当前 handle 对应的子目录）。
+                请选择 SillyTavern 本地数据导出的 <code>data.zip</code> 文件（大小不超过 100MB）。
+                支持“单个用户根目录”或“完整 data 目录”两类结构，系统会自动定位当前 handle 对应的用户目录。
             </p>
             <div class="field">
                 <label for="data-file">选择文件：</label>
@@ -63,23 +63,23 @@
                 <legend>上传模式</legend>
                 <label>
                     <input type="radio" name="mode" value="simulate" checked>
-                    仅模拟验证（推荐先执行一次，不改动服务器数据）
+                    仅模拟并校验（推荐先执行一遍，不修改服务器数据）
                 </label>
                 <label>
                     <input type="radio" name="mode" value="real">
-                    真实写入（会在自动备份后合并数据）
+                    真实写入（自动备份后合并数据）
                 </label>
             </fieldset>
 
             <fieldset class="field">
-                <legend>关键文件覆盖选项（仅对真实写入生效）</legend>
+                <legend>关键文件覆盖选项（仅真实写入时生效）</legend>
                 <label>
                     <input type="checkbox" id="overwrite-settings" checked>
-                    覆盖 <code>settings.json</code>（界面和偏好设置）
+                    覆盖 <code>settings.json</code>（对话配置等）
                 </label>
                 <label>
                     <input type="checkbox" id="overwrite-secrets" checked>
-                    覆盖 <code>secrets.json</code>（API Key 等）
+                    覆盖 <code>secrets.json</code>（API Key 等敏感配置）
                 </label>
                 <label>
                     <input type="checkbox" id="overwrite-stats" checked>
@@ -87,9 +87,17 @@
                 </label>
                 <label>
                     <input type="checkbox" id="overwrite-content-log" checked>
-                    覆盖 <code>content.log</code>（内容记录）
+                    覆盖 <code>content.log</code>（内容去重日志）
                 </label>
             </fieldset>
+
+            <div class="field">
+                <div id="upload-progress-container">
+                    <div id="upload-progress-bar"></div>
+                </div>
+                <div id="upload-progress-text" class="hint"></div>
+                <div id="upload-error" class="error-text"></div>
+            </div>
 
             <button id="upload-button">开始上传</button>
             <pre id="upload-result"></pre>
@@ -98,11 +106,17 @@
         <div id="rollback-section" style="display:none;">
             <h2>一键回滚</h2>
             <p>
-                将当前 <code>DATA_ROOT/{handle}</code> 目录重命名为备份后缀，并从最近一次上传前生成的
-                <code>upload_*.zip</code> 中恢复。请确认你真的需要回到上传前状态。
+                将当前 <code>DATA_ROOT/{handle}</code> 目录整体重命名为带 <code>__failed_时间戳</code> 后缀的目录，
+                再从最近一次“真实写入”前自动生成的 <code>upload_*.zip</code> 中恢复。
             </p>
-            <button id="rollback-button">回滚到上一次上传前状态</button>
+            <button id="rollback-button">回滚到最近一次上传前状态</button>
             <pre id="rollback-result"></pre>
+
+            <div id="backups-section">
+                <h3>自动备份列表（最近 24 小时）</h3>
+                <p class="hint">这里只显示通过本上传系统生成的 upload_*.zip 备份，超出保留期的备份会被自动清理。</p>
+                <div id="backups-list"></div>
+            </div>
         </div>
     </div>
 
