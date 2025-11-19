@@ -180,6 +180,7 @@ async function refreshBackups(status) {
         <div class="hint">${timeText} · ${sizeMb} MB</div>
     </div>
     <div class="backup-row-buttons">
+        <button type="button" data-action="restore" data-name="${backup.name}">Restore</button>
         <button type="button" data-action="download" data-name="${backup.name}">Download</button>
         <button type="button" data-action="delete" data-name="${backup.name}">Delete</button>
     </div>
@@ -467,7 +468,23 @@ window.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            if (action === 'download') {
+            if (action === 'restore') {
+                const resultEl = document.getElementById('rollback-result');
+                if (resultEl) {
+                    resultEl.textContent = `Starting restore from backup…\n${name}`;
+                }
+                try {
+                    const json = await apiPost(`/api/data/backups/${encodeURIComponent(name)}/restore`, {});
+                    if (resultEl) {
+                        resultEl.textContent = `Restore completed.\n${JSON.stringify(json.result || json, null, 2)}`;
+                    }
+                    await refreshAuthAndStatus();
+                } catch (error) {
+                    if (resultEl) {
+                        resultEl.textContent = `Restore error: ${error.message}`;
+                    }
+                }
+            } else if (action === 'download') {
                 window.open(`/api/data/backups/${encodeURIComponent(name)}`, '_blank');
             } else if (action === 'delete') {
                 // eslint-disable-next-line no-alert

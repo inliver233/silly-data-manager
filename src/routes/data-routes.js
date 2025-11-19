@@ -11,6 +11,7 @@ import {
     getUploadBackups,
     processUpload,
     rollbackLastUpload,
+    restoreBackupForHandle,
 } from '../services/data-service.js';
 import { ensureDirectorySync } from '../utils/fs-utils.js';
 
@@ -89,6 +90,30 @@ dataRouter.post('/rollback', requireLogin, async (request, response) => {
         return response.status(statusCode).json({
             ok: false,
             message: error.message || 'Rollback failed',
+        });
+    }
+});
+
+dataRouter.post('/backups/:name/restore', requireLogin, async (request, response) => {
+    request._clientIp = request._clientIp || request.ip;
+    request._userAgent = request._userAgent || request.headers['user-agent'];
+
+    const handle = request.user.stHandle;
+    const linuxdoUser = request.user.linuxdo;
+    const name = request.params.name;
+
+    try {
+        const result = await restoreBackupForHandle(request, handle, linuxdoUser, name);
+        return response.json({
+            ok: true,
+            result,
+        });
+    } catch (error) {
+        // @ts-ignore
+        const statusCode = error.statusCode || 500;
+        return response.status(statusCode).json({
+            ok: false,
+            message: error.message || 'Restore failed',
         });
     }
 });

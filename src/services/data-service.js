@@ -650,7 +650,7 @@ export async function rollbackLastUpload(request, handle) {
     }
 
     ensureDirectorySync(targetRoot);
-    await extractZipSafely(backupZipPath, targetRoot, { maxTotalSize: 500 * 1024 * 1024 });
+    await extractZipSafely(backupZipPath, targetRoot, { maxTotalSize: MAX_UNCOMPRESSED_SIZE });
 
     writeOperationLog({
         operationId,
@@ -671,5 +671,60 @@ export async function rollbackLastUpload(request, handle) {
     return {
         operationId,
         restoredFrom: backupZipPath,
+    };
+}
+
+export async function restoreBackupForHandle(request, handle, linuxdoUser, backupName) {
+    if (!handle) {
+        const invalidHandleError = new Error('Invalid handle derived from LinuxDo username');
+        // @ts-ignore
+        invalidHandleError.statusCode = 400;
+        throw invalidHandleError;
+    }
+
+    const ip = request._clientIp;
+    const userAgent = request._userAgent;
+
+    const backup = getBackupFileForHandle(handle, linuxdoUser, backupName);
+    if (!backup) {
+        const error = new Error('Backup zip file not found for this handle');
+        // @ts-ignore
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const targetRoot = getUserRoot(handle);
+    const timestamp = new Date().toISOString();
+    const operationId = crypto.randomUUID();
+
+    if (fs.existsSync(targetRoot)) {
+        const failedSuffix = timestamp.replace(/[:.]/g, '-');
+        const failedPath = `${targetRoot}__failed_${failedSuffix}`;
+        fs.renameSync(targetRoot, failedPath);
+    }
+
+    ensureDirectorySync(targetRoot);
+    await extractZipSafely(backup.path, targetRoot, { maxTotalSize: MAX_UNCOMPRESSED_SIZE });
+
+    writeOperationLog({
+        operationId,
+        type: 'rollback',
+        linuxdo: linuxdoUser,
+        stHandle: handle,
+        ip,
+        userAgent,
+        archive: null,
+        result: 'success',
+        reason: null,
+        backup: {
+            zipPath: backup.path,
+            snapshotPath: null,
+        },
+    });
+
+    return {
+        operationId,
+        restoredFrom: backup.path,
+        backupName: backup.name,
     };
 }
