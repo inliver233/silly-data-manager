@@ -1,60 +1,63 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>云酒馆数据上传系统 · 管理端</title>
+    <title>Cloud Tavern Data Upload – Admin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div id="app">
-        <h1>云酒馆数据上传系统 · 管理端</h1>
+        <h1>Cloud Tavern Data Upload – Admin</h1>
 
         <div id="admin-login-section">
-            <h2>管理员登录</h2>
+            <h2>Admin login</h2>
             <label>
-                用户名：
+                Username:
                 <input type="text" id="admin-username">
             </label>
             <label>
-                密码：
+                Password:
                 <input type="password" id="admin-password">
             </label>
-            <button id="admin-login-button">登录</button>
+            <button id="admin-login-button">Login</button>
             <pre id="admin-login-message"></pre>
         </div>
 
         <div id="admin-panel" style="display:none;">
-            <button id="admin-logout-button">退出管理员</button>
+            <button id="admin-logout-button">Logout admin</button>
 
-            <h2>用户列表</h2>
-            <p class="hint">下方列出通过本系统进行登录 / 上传 / 回滚的 LinuxDo 用户及其对应的 SillyTavern handle，点击某一行可快速查看该用户的详细操作日志。</p>
-            <button id="load-users-button">加载用户列表</button>
+            <h2>Users</h2>
+            <p class="hint">
+                This list aggregates all LinuxDo users who have logged in / uploaded / rolled back via the upload system,
+                and shows their related SillyTavern handles. Click a row to view a summary and filter logs.
+            </p>
+            <button id="load-users-button">Load users</button>
             <div id="users-output"></div>
 
-            <h3>选中用户概览</h3>
+            <h3>Selected user summary</h3>
             <pre id="selected-user-summary"></pre>
 
-            <h2>操作日志</h2>
+            <h2>Logs</h2>
             <label>
-                按 SillyTavern handle 过滤：
+                Filter by SillyTavern handle:
                 <input type="text" id="filter-handle">
             </label>
             <label>
-                日志类型：
+                Log type:
                 <select id="filter-type">
-                    <option value="">全部</option>
-                    <option value="login">登录</option>
-                    <option value="upload">上传</option>
-                    <option value="rollback">回滚</option>
-                    <option value="handle-change">handle 切换</option>
+                    <option value="">All</option>
+                    <option value="login">login</option>
+                    <option value="upload">upload</option>
+                    <option value="rollback">rollback</option>
+                    <option value="handle-change">handle-change</option>
                 </select>
             </label>
             <label>
-                条数限制：
+                Limit:
                 <input type="number" id="filter-limit" value="100">
             </label>
-            <button id="load-logs-button">加载日志</button>
+            <button id="load-logs-button">Load logs</button>
 
             <pre id="logs-output"></pre>
         </div>

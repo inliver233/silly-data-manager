@@ -81,9 +81,9 @@ function uploadWithProgress(formData, simulate) {
                 progressBar.style.width = `${percent}%`;
             }
             if (progressText) {
-                progressText.textContent = `�ϴ����ȣ�${percent}%��${loadedMb} MB / ${totalMb} MB��`;
+                progressText.textContent = `Upload progress: ${percent}% (${loadedMb} MB / ${totalMb} MB)`;
             }
-            appendLog(logEl, `�ϴ����ȣ�${percent}%��${loadedMb} MB / ${totalMb} MB��`);
+            appendLog(logEl, `Upload progress: ${percent}% (${loadedMb} MB / ${totalMb} MB)`);
         };
 
         xhr.onreadystatechange = () => {
@@ -97,12 +97,12 @@ function uploadWithProgress(formData, simulate) {
             try {
                 json = text ? JSON.parse(text) : null;
             } catch {
-                appendLog(logEl, `��������Ӧ���� JSON��״̬ ${status}����`);
+                appendLog(logEl, `Server response is not JSON (status ${status}). Raw response:`);
                 appendLog(logEl, text.trim());
                 if (errorEl) {
-                    errorEl.textContent = '���������ص� HTML ��Ӧ�����ܿ��� Nginx/���ؽ�ֹ���󣬱��������������� client_max_body_size ��ʱ�������á�';
+                    errorEl.textContent = 'Server returned HTML instead of JSON. This is usually a gateway / reverse-proxy error (for example Cloudflare 4xx/5xx or Nginx error page). Please check proxy timeouts and body size limits.';
                 }
-                reject(new Error('���������ص����ݲ�����Ч�� JSON'));
+                reject(new Error('Server response is not valid JSON'));
                 return;
             }
 
@@ -111,9 +111,9 @@ function uploadWithProgress(formData, simulate) {
 
         xhr.onerror = () => {
             if (errorEl) {
-                errorEl.textContent = '����������������ɴأ��볢���Ժ����ԡ�';
+                errorEl.textContent = 'Network error while uploading. Please try again.';
             }
-            reject(new Error('����������������ɴ�'));
+            reject(new Error('Network error during upload'));
         };
 
         xhr.send(formData);
@@ -140,18 +140,18 @@ async function refreshBackups(status) {
     }
 
     if (!status.exists) {
-        backupsList.textContent = '��ǰ handle �䲻�����ݿ⣬��û���κι���ϵͳ���ɵ��Զ����ݡ�';
+        backupsList.textContent = 'No user directory exists for this handle yet, so there are no automatic backups.';
         return;
     }
 
-    backupsList.textContent = '���ڼ������б���';
+    backupsList.textContent = 'Loading backups…';
 
     try {
         const data = await apiGet('/api/data/backups');
         const backups = data.backups || [];
 
         if (!backups.length) {
-            backupsList.textContent = '��� 24 Сʱ����û�в鿴�� upload_*.zip �Զ����ݡ�';
+            backupsList.textContent = 'No upload_*.zip automatic backups found in the last 24 hours.';
             return;
         }
 
@@ -172,23 +172,23 @@ async function refreshBackups(status) {
             const sizeMb = backup.size ? (backup.size / (1024 * 1024)).toFixed(2) : '0.00';
             const isCurrent = currentName && backup.name === currentName;
 
-            const label = isCurrent ? `${backup.name}��ǰ�ع㱸�ݵ㣩` : backup.name;
+            const label = isCurrent ? `${backup.name} (current rollback point)` : backup.name;
 
-            return `<div class=\"backup-row${isCurrent ? ' backup-row-current' : ''}\">
+            return `<div class="backup-row${isCurrent ? ' backup-row-current' : ''}">
     <div>
         <div>${label}</div>
-        <div class=\"hint\">${timeText} · ${sizeMb} MB</div>
+        <div class="hint">${timeText} · ${sizeMb} MB</div>
     </div>
-    <div class=\"backup-row-buttons\">
-        <button type=\"button\" data-action=\"download\" data-name=\"${backup.name}\">���</button>
-        <button type=\"button\" data-action=\"delete\" data-name=\"${backup.name}\">ɾ��</button>
+    <div class="backup-row-buttons">
+        <button type="button" data-action="download" data-name="${backup.name}">Download</button>
+        <button type="button" data-action="delete" data-name="${backup.name}">Delete</button>
     </div>
 </div>`;
         });
 
         backupsList.innerHTML = rows.join('\n');
     } catch (error) {
-        backupsList.textContent = `�������б�ʧ�ܣ�${error.message}`;
+        backupsList.textContent = `Failed to load backups: ${error.message}`;
     }
 }
 
@@ -204,7 +204,7 @@ async function refreshAuthAndStatus() {
     try {
         const auth = await apiGet('/api/auth/me');
         if (!auth.authenticated) {
-            authStatusEl.textContent = 'δ��¼������ʹ�� LinuxDo �˺ŵ�¼��';
+            authStatusEl.textContent = 'Not logged in. Please login with your LinuxDo account.';
             loginButton.style.display = 'inline-block';
             logoutButton.style.display = 'none';
             userSection.style.display = 'none';
@@ -214,7 +214,7 @@ async function refreshAuthAndStatus() {
             return;
         }
 
-        authStatusEl.textContent = '��ͨ�� LinuxDo ��¼��';
+        authStatusEl.textContent = 'Logged in with LinuxDo.';
         loginButton.style.display = 'none';
         logoutButton.style.display = 'inline-block';
         userSection.style.display = 'block';
@@ -236,48 +236,48 @@ async function refreshAuthAndStatus() {
         const rollbackButton = document.getElementById('rollback-button');
         if (summaryEl) {
             if (!status.exists) {
-                summaryEl.textContent = '�������ϻ�û�и� handle ��Ӧ������Ŀ¼��';
+                summaryEl.textContent = 'There is currently no data directory for this handle under DATA_ROOT.';
                 if (rollbackButton) {
                     rollbackButton.disabled = true;
                 }
             } else {
                 const lines = [];
                 const sizeMb = status.size ? (status.size / (1024 * 1024)).toFixed(2) : '0.00';
-                lines.push(`����Ŀ¼��${status.path}`);
-                lines.push('�Ƿ���ڣ���');
-                lines.push(`���ݴ�С��${sizeMb} MB`);
+                lines.push(`Directory: ${status.path}`);
+                lines.push('Exists: yes');
+                lines.push(`Approx size: ${sizeMb} MB`);
                 if (status.mtime) {
                     try {
                         const local = new Date(status.mtime).toLocaleString();
-                        lines.push(`����޸�ʱ�䣺${local}`);
+                        lines.push(`Last modified: ${local}`);
                     } catch {
-                        lines.push(`����޸�ʱ�䣺${status.mtime}`);
+                        lines.push(`Last modified: ${status.mtime}`);
                     }
                 }
                 const keys = status.keyFiles || {};
                 const keyParts = [];
-                keyParts.push(`settings.json��${keys.settingsJson ? '����' : 'ȱʧ'}��`);
-                keyParts.push(`secrets.json��${keys.secretsJson ? '����' : 'ȱʧ'}��`);
-                keyParts.push(`stats.json��${keys.statsJson ? '����' : 'ȱʧ'}��`);
-                keyParts.push(`content.log��${keys.contentLog ? '����' : 'ȱʧ'}��`);
-                lines.push(`�ؼ��ļ���${keyParts.join('��')}`);
+                keyParts.push(`settings.json: ${keys.settingsJson ? 'present' : 'missing'}`);
+                keyParts.push(`secrets.json: ${keys.secretsJson ? 'present' : 'missing'}`);
+                keyParts.push(`stats.json: ${keys.statsJson ? 'present' : 'missing'}`);
+                keyParts.push(`content.log: ${keys.contentLog ? 'present' : 'missing'}`);
+                lines.push(`Key files: ${keyParts.join(' | ')}`);
 
                 const rb = status.rollback || null;
                 if (rb && rb.canRollback) {
-                    lines.push('�ع�״̬�����ã����ص����һ��ͨ����ϵͳ�ϴ�ǰ��״̬����');
+                    lines.push('Rollback: available (there is an automatic backup created before the last successful upload).');
                     if (rb.backupMtime) {
                         try {
                             const bLocal = new Date(rb.backupMtime).toLocaleString();
-                            lines.push(`���ݴ���ʱ�䣺${bLocal}`);
+                            lines.push(`Backup created at: ${bLocal}`);
                         } catch {
-                            lines.push(`���ݴ���ʱ�䣺${rb.backupMtime}`);
+                            lines.push(`Backup created at: ${rb.backupMtime}`);
                         }
                     }
                     if (rollbackButton) {
                         rollbackButton.disabled = false;
                     }
                 } else {
-                    lines.push('�ع�״̬����ǰû�п��õ��Զ����ݣ���δͨ����ϵͳ���гɹ��ϴ�����');
+                    lines.push('Rollback: not available (no recent automatic backup found).');
                     if (rollbackButton) {
                         rollbackButton.disabled = true;
                     }
@@ -289,7 +289,7 @@ async function refreshAuthAndStatus() {
 
         await refreshBackups(status);
     } catch (error) {
-        authStatusEl.textContent = `����״̬ʧ�ܣ�${error.message}`;
+        authStatusEl.textContent = `Failed to load status: ${error.message}`;
     }
 }
 
@@ -326,12 +326,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
         const file = fileInput && fileInput.files && fileInput.files[0];
         if (!file) {
-            resultEl.textContent = '����ѡ��һ�� data.zip �ļ���';
+            resultEl.textContent = 'Please choose a data.zip file first.';
             return;
         }
 
         if (file.size > 100 * 1024 * 1024) {
-            resultEl.textContent = '�ļ����� 100MB�������������ܾ���';
+            resultEl.textContent = 'File is larger than 100MB. Upload rejected on client side.';
             return;
         }
 
@@ -354,8 +354,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
         if (progressText) {
             progressText.textContent = simulate
-                ? '���� 1/2�������ϴ��ļ����ڷ������н�ѹ��ģ��ģʽ�������޸ķ��������ݣ���'
-                : '���� 1/3�������ϴ��ļ����ڷ������н�ѹ��';
+                ? 'Step 1/2: uploading archive and running simulation on the server…'
+                : 'Step 1/3: uploading archive and extracting on the server…';
         }
         if (errorEl) {
             errorEl.textContent = '';
@@ -373,30 +373,30 @@ window.addEventListener('DOMContentLoaded', () => {
             const { status, json } = await uploadWithProgress(formData, simulate);
 
             if (!json || json.ok === false) {
-                appendLog(resultEl, `�ϴ�ʧ�ܣ�${(json && json.message) || status}`);
+                appendLog(resultEl, `Upload failed: ${(json && json.message) || status}`);
                 if (json) {
-                    appendLog(resultEl, '���������أ�');
+                    appendLog(resultEl, 'Full JSON response:');
                     appendLog(resultEl, JSON.stringify(json, null, 2));
                 }
                 if (errorEl) {
-                    errorEl.textContent = '�ϴ�ʧ�ܣ��鿴������־�еľ�����Ϣ��';
+                    errorEl.textContent = 'Upload failed. See details above.';
                 }
             } else if (json.result && json.result.simulation) {
                 if (progressText) {
-                    progressText.textContent = '���� 2/2������������ɽ�ѹ�Ͱ�ȫ��飨ģ��ģʽ����';
+                    progressText.textContent = 'Step 2/2: simulation completed.';
                 }
-                appendLog(resultEl, 'ģ�����£�');
+                appendLog(resultEl, 'Simulation result:');
                 appendLog(resultEl, JSON.stringify(json.result, null, 2));
             } else {
                 if (progressText) {
-                    progressText.textContent = '���� 2/3������������ɽ�ѹ�Ͱ�ȫ��顣\n���� 3/3������ɱ��ݾ����ݲ��ϲ������ݡ�';
+                    progressText.textContent = 'Step 2/3: extraction and safety checks completed.\nStep 3/3: backup + merge completed.';
                 }
-                appendLog(resultEl, '��ϸ�����');
+                appendLog(resultEl, 'Upload completed. Detailed result:');
                 appendLog(resultEl, JSON.stringify(json.result, null, 2));
                 await refreshAuthAndStatus();
             }
         } catch (error) {
-            appendLog(resultEl, `�ϴ������г�����${error.message}`);
+            appendLog(resultEl, `Upload error: ${error.message}`);
         } finally {
             uploadButton.disabled = false;
             if (fileInput) {
@@ -410,15 +410,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
     rollbackButton.addEventListener('click', async () => {
         const resultEl = document.getElementById('rollback-result');
-        resultEl.textContent = '��������ع������Ժ�';
+        resultEl.textContent = 'Starting rollback…';
         rollbackButton.disabled = true;
 
         try {
             const json = await apiPost('/api/data/rollback', {});
-            resultEl.textContent = `�ع��ɹ���\n${JSON.stringify(json.result || json, null, 2)}`;
+            resultEl.textContent = `Rollback completed.\n${JSON.stringify(json.result || json, null, 2)}`;
             await refreshAuthAndStatus();
         } catch (error) {
-            resultEl.textContent = `�ع������г�����${error.message}`;
+            resultEl.textContent = `Rollback error: ${error.message}`;
         } finally {
             rollbackButton.disabled = false;
         }
@@ -431,7 +431,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
             if (!rawHandle) {
                 if (resultEl) {
-                    resultEl.textContent = '��������Ҫ������ SillyTavern handle �����ơ�';
+                    resultEl.textContent = 'Please enter the SillyTavern handle you want to operate on.';
                 }
                 return;
             }
@@ -441,12 +441,12 @@ window.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('st-handle').textContent = result.stHandle;
                 handleInput.value = result.stHandle;
                 if (resultEl) {
-                    resultEl.textContent = `���л��� handle��${result.stHandle}\n��ӦĿ¼��${result.path}`;
+                    resultEl.textContent = `Switched handle to: ${result.stHandle}\nDirectory: ${result.path}`;
                 }
                 await refreshAuthAndStatus();
             } catch (error) {
                 if (resultEl) {
-                    resultEl.textContent = `�л� handle ʧ�ܣ�${error.message}`;
+                    resultEl.textContent = `Failed to switch handle: ${error.message}`;
                 }
             }
         });
@@ -469,7 +469,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 window.open(`/api/data/backups/${encodeURIComponent(name)}`, '_blank');
             } else if (action === 'delete') {
                 // eslint-disable-next-line no-alert
-                const confirmed = window.confirm(`ȷ��Ҫɾ�����ݵ㣿\n${name}`);
+                const confirmed = window.confirm(`Delete backup?\n${name}`);
                 if (!confirmed) {
                     return;
                 }
@@ -487,12 +487,12 @@ window.addEventListener('DOMContentLoaded', () => {
                         throw new Error(json.message || `Request failed: ${response.status}`);
                     }
                     if (resultEl) {
-                        resultEl.textContent = `�Ѿ�ɾ�����ݵ㣺${name}`;
+                        resultEl.textContent = `Deleted backup: ${name}`;
                     }
                     await refreshAuthAndStatus();
                 } catch (error) {
                     if (resultEl) {
-                        resultEl.textContent = `ɾ�����ݵ�ʧ�ܣ�${error.message}`;
+                        resultEl.textContent = `Failed to delete backup: ${error.message}`;
                     }
                 }
             }

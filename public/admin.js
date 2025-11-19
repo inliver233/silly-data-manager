@@ -66,11 +66,11 @@ window.addEventListener('DOMContentLoaded', () => {
             if (result.csrfToken) {
                 adminCsrfToken = result.csrfToken;
             }
-            loginMessage.textContent = '登录成功。';
+            loginMessage.textContent = 'Login successful.';
             loginSection.style.display = 'none';
             panelSection.style.display = 'block';
         } catch (error) {
-            loginMessage.textContent = `登录失败：${error.message}`;
+            loginMessage.textContent = `Login failed: ${error.message}`;
         }
     });
 
@@ -93,7 +93,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!adminUsers || adminUsers.length === 0) {
-            usersOutput.textContent = '暂无用户记录。';
+            usersOutput.textContent = 'No users found in logs yet.';
             if (selectedUserSummary) {
                 selectedUserSummary.textContent = '';
             }
@@ -101,10 +101,10 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         const fragments = adminUsers.map((user, index) => {
-            const handles = (user.handles || []).join(', ') || '无';
-            const label = `#${index + 1} [${user.linuxdoId ?? '未知'}] ${user.linuxdoUsername ?? '未知'} (${user.linuxdoName ?? ''})`;
-            const stats = `登录: ${user.logins} 次, 上传: ${user.uploads} 次, 回滚: ${user.rollbacks} 次, handle 切换: ${user.handleChanges} 次`;
-            const time = `首次出现: ${user.firstSeen ?? '-'} / 最后出现: ${user.lastSeen ?? '-'}`;
+            const handles = (user.handles || []).join(', ') || '-';
+            const label = `#${index + 1} [${user.linuxdoId ?? 'unknown'}] ${user.linuxdoUsername ?? 'unknown'} (${user.linuxdoName ?? ''})`;
+            const stats = `logins: ${user.logins}, uploads: ${user.uploads}, rollbacks: ${user.rollbacks}, handle changes: ${user.handleChanges}`;
+            const time = `first seen: ${user.firstSeen ?? '-'} / last seen: ${user.lastSeen ?? '-'}`;
             return `<div class="user-row" data-index="${index}"><div>${label}</div><div>Handles: ${handles}</div><div>${stats}</div><div>${time}</div></div>`;
         });
 
@@ -121,14 +121,14 @@ window.addEventListener('DOMContentLoaded', () => {
                     const user = adminUsers[index];
                     if (selectedUserSummary) {
                         const lines = [];
-                        lines.push(`LinuxDo ID：${user.linuxdoId ?? '未知'}`);
-                        lines.push(`LinuxDo 用户名：${user.linuxdoUsername ?? '未知'}`);
-                        lines.push(`LinuxDo 昵称：${user.linuxdoName ?? ''}`);
-                        lines.push(`Trust level：${user.trustLevel ?? '未知'}`);
-                        lines.push(`关联 handles：${(user.handles || []).join(', ') || '无'}`);
-                        lines.push(`首次出现：${user.firstSeen ?? '-'}`);
-                        lines.push(`最后出现：${user.lastSeen ?? '-'}`);
-                        lines.push(`登录：${user.logins} 次，上传：${user.uploads} 次，回滚：${user.rollbacks} 次，handle 切换：${user.handleChanges} 次`);
+                        lines.push(`LinuxDo ID: ${user.linuxdoId ?? 'unknown'}`);
+                        lines.push(`LinuxDo username: ${user.linuxdoUsername ?? 'unknown'}`);
+                        lines.push(`LinuxDo name: ${user.linuxdoName ?? ''}`);
+                        lines.push(`Trust level: ${user.trustLevel ?? 'unknown'}`);
+                        lines.push(`Handles: ${(user.handles || []).join(', ') || '-'}`);
+                        lines.push(`First seen: ${user.firstSeen ?? '-'}`);
+                        lines.push(`Last seen: ${user.lastSeen ?? '-'}`);
+                        lines.push(`Logins: ${user.logins}, uploads: ${user.uploads}, rollbacks: ${user.rollbacks}, handle changes: ${user.handleChanges}`);
                         selectedUserSummary.textContent = lines.join('\n');
                     }
 
@@ -142,7 +142,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (loadUsersButton && usersOutput) {
         loadUsersButton.addEventListener('click', async () => {
-            usersOutput.textContent = '正在加载用户列表…';
+            usersOutput.textContent = 'Loading users…';
             if (selectedUserSummary) {
                 selectedUserSummary.textContent = '';
             }
@@ -152,13 +152,13 @@ window.addEventListener('DOMContentLoaded', () => {
                 selectedUserIndex = null;
                 renderUsers();
             } catch (error) {
-                usersOutput.textContent = `加载用户列表失败：${error.message}`;
+                usersOutput.textContent = `Failed to load users: ${error.message}`;
             }
         });
     }
 
     loadLogsButton.addEventListener('click', async () => {
-        logsOutput.textContent = '正在加载日志…';
+        logsOutput.textContent = 'Loading logs…';
         const params = new URLSearchParams();
         const typeValue = filterType.value;
         const handleValue = filterHandle.value.trim();
@@ -188,7 +188,7 @@ window.addEventListener('DOMContentLoaded', () => {
             const json = await adminApiGet(`/admin/api/logs?${params.toString()}`);
             logsOutput.textContent = JSON.stringify(json.logs, null, 2);
         } catch (error) {
-            logsOutput.textContent = `加载日志失败：${error.message}`;
+            logsOutput.textContent = `Failed to load logs: ${error.message}`;
         }
     });
 });
